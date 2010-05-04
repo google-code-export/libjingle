@@ -64,6 +64,7 @@ class SessionManager;
 class Session;
 class TransportChannel;
 class TransportChannelImpl;
+class Candidate;
 
 class Transport : public talk_base::MessageHandler, public sigslot::has_slots<> {
  public:
@@ -215,6 +216,9 @@ class Transport : public talk_base::MessageHandler, public sigslot::has_slots<> 
   virtual void OnTransportChannelMessages(
       const std::vector<buzz::XmlElement*>& msgs);
 
+  // Generates a XML element describing the given candidate.
+  virtual buzz::XmlElement* TranslateCandidate(const Candidate& c) = 0;
+
  private:
   typedef std::map<std::string, TransportChannelImpl*> ChannelMap;
   typedef std::vector<buzz::XmlElement*> XmlElementList;
@@ -238,7 +242,12 @@ class Transport : public talk_base::MessageHandler, public sigslot::has_slots<> 
   void OnChannelRequestSignaling();
 
   // Called when a channel wishes to send a transport message.
-  void OnChannelMessage(TransportChannelImpl* impl, buzz::XmlElement* elem);
+  void OnChannelMessage(TransportChannelImpl* impl,
+                        buzz::XmlElement* elem);
+
+  // Called when a candidate connection is ready
+  void OnCandidateReady(TransportChannelImpl* transport_channel,
+                        const Candidate& candidate);
 
   // Dispatches messages to the appropriate handler (below).
   void OnMessage(talk_base::Message* msg);

@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2004--2005, Google Inc.
+ * Copyright 2004--2007, Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,9 +25,12 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef TALK_SESSION_PHONE_CODEC_H_
+#define TALK_SESSION_PHONE_CODEC_H_
 
-#ifndef _CODEC_H_
-#define _CODEC_H_
+#include <string>
+
+namespace cricket {
 
 struct Codec {
   int id;
@@ -38,10 +41,50 @@ struct Codec {
 
   int preference;
 
- // Creates a codec with the given parameters.
-  Codec(int pt, const std::string& nm, int cr, int br, int cs, int pr) : 
-    id(pt), name(nm), clockrate(cr), preference(pr), bitrate(br), channels(cs) {}
-  // Ranks codecs by their preferences.
+  // Creates a codec with the given parameters.
+  Codec(int pt, const std::string& nm, int cr, int br, int cs, int pr)
+      : id(pt), name(nm), clockrate(cr), bitrate(br),
+        channels(cs), preference(pr) {}
+
+  // Creates an empty codec.
+  Codec() : id(0), clockrate(0), bitrate(0), channels(0), preference(0) {}
+
+  bool Matches(int payload, const std::string& nm) const;
+
+  static bool Preferable(const Codec& first, const Codec& other) {
+    return first.preference > other.preference;
+  }
+
+  std::string ToString() const;
 };
 
-#endif // CODEC_H_
+struct VideoCodec {
+  int id;
+  std::string name;
+  int width;
+  int height;
+  int framerate;
+
+  int preference;
+
+  // Creates a codec with the given parameters.
+  VideoCodec(int pt, const std::string& nm, int w, int h, int fr, int pr)
+      : id(pt), name(nm), width(w), height(h), framerate(fr), preference(pr) {}
+
+  // Creates an empty codec.
+  VideoCodec()
+      : id(0), width(0), height(0), framerate(0), preference(0) {}
+
+  bool Matches(int payload, const std::string& nm) const;
+
+  static bool Preferable(const VideoCodec& first, const VideoCodec& other) {
+    return first.preference > other.preference;
+  }
+
+  std::string ToString() const;
+};
+
+}  // namespace cricket
+
+#endif  // TALK_SESSION_PHONE_CODEC_H_
+

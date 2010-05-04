@@ -35,13 +35,14 @@ namespace buzz {
 
 RateLimitManager task_rate_manager;
 
-XmppTask::XmppTask(Task* parent, XmppEngine::HandlerLevel level)
+XmppTask::XmppTask(TaskParent* parent, XmppEngine::HandlerLevel level)
     : Task(parent), client_(NULL) {
 #ifdef _DEBUG
   debug_force_timeout_ = false;
 #endif
 
-  XmppClient* client = (XmppClient*)parent->GetParent(XMPP_CLIENT_TASK_CODE);
+  XmppClient* client =
+      static_cast<XmppClient*>(parent->GetParent(XMPP_CLIENT_TASK_CODE));
   client_ = client;
   id_ = client->NextId();
   client->AddXmppTask(this, level);

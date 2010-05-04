@@ -34,6 +34,7 @@
 #include "talk/xmllite/xmlelement.h"
 #include "talk/xmpp/constants.h"
 
+#if defined(FEATURE_ENABLE_PSTN)
 namespace cricket {
 
 const std::string kNsRawTransport("http://www.google.com/transport/raw-udp");
@@ -139,12 +140,28 @@ bool RawTransport::ParseAddress(const buzz::XmlElement* stanza,
 
 TransportChannelImpl* RawTransport::CreateTransportChannel(
     const std::string& name, const std::string &session_type) {
-  return new RawTransportChannel(
-     name, session_type, this, session_manager()->port_allocator());
+  return new RawTransportChannel(name,
+                                 session_type,
+                                 this,
+                                 session_manager()->worker_thread(),
+                                 session_manager()->port_allocator());
 }
 
 void RawTransport::DestroyTransportChannel(TransportChannelImpl* channel) {
   delete channel;
 }
 
+buzz::XmlElement* RawTransport::TranslateCandidate(const Candidate& c) {
+  ASSERT(c.protocol() == "udp");
+  talk_base::SocketAddress addr = c.address();
+
+  buzz::XmlElement* elem = new buzz::XmlElement(kQnRawChannel);
+  elem->SetAttr(buzz::QN_NAME, name());
+  elem->SetAttr(QN_ADDRESS, addr.IPAsString());
+  elem->SetAttr(QN_PORT, addr.PortAsString());
+
+  return elem;
+}
+
 }  // namespace cricket
+#endif // defined(FEATURE_ENABLE_PSTN)

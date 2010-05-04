@@ -66,15 +66,15 @@ class P2PTransport: public Transport {
   void OnTransportChannelMessages(
       const std::vector<buzz::XmlElement*>& candidates);
 
+  // Generates a XML element describing the given candidate.
+  virtual buzz::XmlElement* TranslateCandidate(const Candidate& c);
+
  private:
   // Attempts to parse the given XML into a candidate.  Returns true if the
   // XML is valid.  If not, we will signal an error.
   bool ParseCandidate(const buzz::XmlElement* stanza,
                       const buzz::XmlElement* elem,
                       Candidate* candidate);
-
-  // Generates a XML element describing the given candidate.
-  buzz::XmlElement* TranslateCandidate(const Candidate& c);
 
   friend class P2PTransportChannel;
 

@@ -30,6 +30,7 @@
 
 #include "talk/p2p/base/transport.h"
 
+#if defined(FEATURE_ENABLE_PSTN)
 namespace cricket {
 
 // Xml names used to name this transport and create our elements
@@ -65,6 +66,9 @@ class RawTransport: public Transport {
      const std::string& name, const std::string &session_type);
   virtual void DestroyTransportChannel(TransportChannelImpl* channel);
 
+  // Generates a XML element describing the given candidate.
+  virtual buzz::XmlElement* TranslateCandidate(const Candidate& c);
+
  private:
   // Parses the given element, which should describe the address to use for a
   // given channel.  This will return false and signal an error if the address
@@ -80,5 +84,6 @@ class RawTransport: public Transport {
 
 }  // namespace cricket
 
+#endif // defined(FEATURE_ENABLE_PSTN)
 
 #endif  // _CRICKET_P2P_BASE_RAWTRANSPORT_H_

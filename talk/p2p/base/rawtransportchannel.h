@@ -33,6 +33,12 @@
 #include "talk/p2p/base/rawtransport.h"
 #include "talk/p2p/base/candidate.h"
 
+#if defined(FEATURE_ENABLE_PSTN)
+
+namespace talk_base {
+class Thread;
+}
+
 namespace cricket {
 
 class Port;
@@ -51,6 +57,7 @@ class RawTransportChannel : public TransportChannelImpl,
   RawTransportChannel(const std::string &name,
 		      const std::string &session_type,
                       RawTransport* transport,
+                      talk_base::Thread *worker_thread,
                       PortAllocator *allocator);
   virtual ~RawTransportChannel();
 
@@ -63,7 +70,7 @@ class RawTransportChannel : public TransportChannelImpl,
   virtual Transport* GetTransport() { return raw_transport_; }
 
   // Creates an allocator session to start figuring out which type of port we
-  // should send to the other client.  This will send SignalChannelMessage once
+  // should send to the other client.  This will send SignalAvailableCandidate once
   // we have decided.
   virtual void Connect();
 
@@ -77,8 +84,14 @@ class RawTransportChannel : public TransportChannelImpl,
   // have this since we now know where to send.
   virtual void OnChannelMessage(const buzz::XmlElement* msg);
 
+  virtual void OnCandidate(const Candidate& candidate);
+
+  void OnRemoteAddress(const talk_base::SocketAddress& remote_address);
+
+
  private:
   RawTransport* raw_transport_;
+  talk_base::Thread *worker_thread_;
   PortAllocator* allocator_;
   PortAllocatorSession* allocator_session_;
   StunPort* stun_port_;
@@ -114,4 +127,5 @@ class RawTransportChannel : public TransportChannelImpl,
 
 }  // namespace cricket
 
+#endif // defined(FEATURE_ENABLE_PSTN)
 #endif  // _CRICKET_P2P_BASE_RAWTRANSPORTCHANNEL_H_

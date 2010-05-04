@@ -26,6 +26,7 @@
  */
 
 #include "talk/p2p/base/sessionmanager.h"
+#include "talk/p2p/base/session.h"
 #include "talk/base/common.h"
 #include "talk/base/helpers.h"
 #include "talk/p2p/base/constants.h"
@@ -34,7 +35,7 @@
 
 namespace cricket {
 
-SessionManager::SessionManager(PortAllocator *allocator, 
+SessionManager::SessionManager(PortAllocator *allocator,
                                talk_base::Thread *worker) {
   allocator_ = allocator;
   signaling_thread_ = talk_base::Thread::Current();
@@ -72,8 +73,8 @@ SessionClient* SessionManager::GetClient(const std::string& session_type) {
 
 Session *SessionManager::CreateSession(const std::string& name,
                                        const std::string& session_type) {
-  return CreateSession(name, SessionID(name, CreateRandomId()), session_type,
-                       false);
+  return CreateSession(name, SessionID(name, talk_base::CreateRandomId()),
+                       session_type, false);
 }
 
 Session *SessionManager::CreateSession(
@@ -139,7 +140,7 @@ bool SessionManager::IsSessionMessage(const buzz::XmlElement* stanza) {
   return true;
 }
 
-Session* SessionManager::FindSessionForStanza(const buzz::XmlElement* stanza, 
+Session* SessionManager::FindSessionForStanza(const buzz::XmlElement* stanza,
                                               bool incoming) {
   const buzz::XmlElement* session_xml = stanza->FirstNamed(QN_SESSION);
   ASSERT(session_xml != NULL);
@@ -189,7 +190,7 @@ void SessionManager::OnIncomingMessage(const buzz::XmlElement* stanza) {
       id.set_id_str(session_xml->Attr(buzz::QN_ID));
       id.set_initiator(session_xml->Attr(QN_INITIATOR));
 
-      session = CreateSession(stanza->Attr(buzz::QN_TO), 
+      session = CreateSession(stanza->Attr(buzz::QN_TO),
                               id,
                               session_type,  true);
       session->OnIncomingMessage(stanza);
@@ -215,16 +216,16 @@ void SessionManager::OnIncomingResponse(const buzz::XmlElement* orig_stanza,
   return;
 }
 
-void SessionManager::OnFailedSend(const buzz::XmlElement* orig_stanza, 
+void SessionManager::OnFailedSend(const buzz::XmlElement* orig_stanza,
                                   const buzz::XmlElement* error_stanza) {
   Session* session = FindSessionForStanza(orig_stanza, false);
   if (session) {
-    scoped_ptr<buzz::XmlElement> synthetic_error;
+    talk_base::scoped_ptr<buzz::XmlElement> synthetic_error;
     if (!error_stanza) {
-      // A failed send is semantically equivalent to an error response, so we 
+      // A failed send is semantically equivalent to an error response, so we
       // can just turn the former into the latter.
       synthetic_error.reset(
-        CreateErrorMessage(orig_stanza, buzz::QN_STANZA_ITEM_NOT_FOUND, 
+        CreateErrorMessage(orig_stanza, buzz::QN_STANZA_ITEM_NOT_FOUND,
                            "cancel", "Recipient did not respond", NULL));
       error_stanza = synthetic_error.get();
     }
@@ -251,7 +252,7 @@ void SessionManager::SendErrorMessage(const buzz::XmlElement* stanza,
                                       const std::string& type,
                                       const std::string& text,
                                       const buzz::XmlElement* extra_info) {
-  scoped_ptr<buzz::XmlElement> msg(
+  talk_base::scoped_ptr<buzz::XmlElement> msg(
       CreateErrorMessage(stanza, name, type, text, extra_info));
   SignalOutgoingMessage(msg.get());
 }
@@ -307,7 +308,7 @@ void SessionManager::OnOutgoingMessage(Session* session,
   SignalOutgoingMessage(stanza);
 }
 
-void SessionManager::OnErrorMessage(Session* session,
+void SessionManager::OnErrorMessage(BaseSession* session,
                                     const buzz::XmlElement* stanza,
                                     const buzz::QName& name,
                                     const std::string& type,

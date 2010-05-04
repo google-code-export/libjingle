@@ -25,10 +25,11 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef TALK_BASE_ASYNCTCPSOCKET_H__
-#define TALK_BASE_ASYNCTCPSOCKET_H__
+#ifndef TALK_BASE_ASYNCTCPSOCKET_H_
+#define TALK_BASE_ASYNCTCPSOCKET_H_
 
 #include "talk/base/asyncpacketsocket.h"
+#include "talk/base/socketfactory.h"
 
 namespace talk_base {
 
@@ -36,24 +37,25 @@ namespace talk_base {
 // are preserved, and drops packets silently on Send, rather than
 // buffer them in user space.
 class AsyncTCPSocket : public AsyncPacketSocket {
-public:
-  AsyncTCPSocket(AsyncSocket* socket);
+ public:
+  static AsyncTCPSocket* Create(SocketFactory* factory) {
+    AsyncSocket* sock = factory->CreateAsyncSocket(SOCK_STREAM);
+    return (sock) ? new AsyncTCPSocket(sock) : NULL;
+  }
+  explicit AsyncTCPSocket(AsyncSocket* socket);
   virtual ~AsyncTCPSocket();
 
-  virtual int Send(const void *pv, size_t cb);
-  virtual int SendTo(const void *pv, size_t cb, const SocketAddress& addr);
+  virtual int Send(const void* pv, size_t cb);
+  virtual int SendTo(const void* pv, size_t cb, const SocketAddress& addr);
 
   sigslot::signal1<AsyncTCPSocket*> SignalConnect;
-  sigslot::signal2<AsyncTCPSocket*,int> SignalClose;
+  sigslot::signal2<AsyncTCPSocket*, int> SignalClose;
 
-protected:
-  int SendRaw(const void * pv, size_t cb);
-  virtual void ProcessInput(char * data, size_t& len);
+ protected:
+  int SendRaw(const void* pv, size_t cb);
+  virtual void ProcessInput(char* data, size_t& len);
 
-private:
-  char* inbuf_, * outbuf_;
-  size_t insize_, inpos_, outsize_, outpos_;
-
+ private:
   int Flush();
 
   // Called by the underlying socket
@@ -61,8 +63,11 @@ private:
   void OnReadEvent(AsyncSocket* socket);
   void OnWriteEvent(AsyncSocket* socket);
   void OnCloseEvent(AsyncSocket* socket, int error);
+
+  char* inbuf_, * outbuf_;
+  size_t insize_, inpos_, outsize_, outpos_;
 };
 
-} // namespace talk_base
+}  // namespace talk_base
 
-#endif // TALK_BASE_ASYNCTCPSOCKET_H__
+#endif  // TALK_BASE_ASYNCTCPSOCKET_H_

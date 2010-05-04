@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2004--2006, Google Inc.
+ * Copyright 2004--2008, Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without 
  * modification, are permitted provided that the following conditions are met:
@@ -44,46 +44,87 @@ namespace cricket {
 class TunnelSession;
 class TunnelStream;
 
+enum TunnelSessionRole { INITIATOR, RESPONDER };
+
 ///////////////////////////////////////////////////////////////////////////////
 // TunnelSessionClient
 ///////////////////////////////////////////////////////////////////////////////
 
-class TunnelSessionClient
-  : public SessionClient, public talk_base::MessageHandler, 
-    public sigslot::has_slots<> {
+// Base class is still abstract
+class TunnelSessionClientBase
+  : public SessionClient, public talk_base::MessageHandler {
 public:
-  TunnelSessionClient(const buzz::Jid& jid, SessionManager* manager);
-  virtual ~TunnelSessionClient();
+  TunnelSessionClientBase(const buzz::Jid& jid, SessionManager* manager, 
+                          const std::string &ns);
+  virtual ~TunnelSessionClientBase();
 
   const buzz::Jid& jid() const { return jid_; }
   SessionManager* session_manager() const { return session_manager_; }
 
-  const SessionDescription* CreateSessionDescription(
-    const buzz::XmlElement* element);
-  buzz::XmlElement* TranslateSessionDescription(
-    const SessionDescription* description);
-
   void OnSessionCreate(Session* session, bool received);
   void OnSessionDestroy(Session* session);
 
-  // This can be called on any thread.  The stream interface is thread-safe, but
-  // notifications must be registered on the creating thread.
+  // This can be called on any thread.  The stream interface is
+  // thread-safe, but notifications must be registered on the creating
+  // thread.
   talk_base::StreamInterface* CreateTunnel(const buzz::Jid& to,
                                            const std::string& description);
 
-  // Signal arguments are this, initiator, description, session
-  sigslot::signal4<TunnelSessionClient*, buzz::Jid, std::string, Session*>
-    SignalIncomingTunnel;
   talk_base::StreamInterface* AcceptTunnel(Session* session);
   void DeclineTunnel(Session* session);
 
-private:
+  // Invoked on an incoming tunnel
+  virtual void OnIncomingTunnel(const buzz::Jid &jid, Session *session) = 0;
+
+  // Invoked on an outgoing session request
+  virtual SessionDescription *CreateOutgoingSessionDescription(
+                    const buzz::Jid &jid, const std::string &description) = 0;
+  // Invoked on a session request accept to create 
+  // the local-side session description
+  virtual SessionDescription *CreateOutgoingSessionDescription(
+                                                      Session *incoming) = 0;
+
+protected:
+
   void OnMessage(talk_base::Message* pmsg);
+
+  // helper method to instantiate TunnelSession. By overriding this,
+  // subclasses of TunnelSessionClient are able to instantiate
+  // subclasses of TunnelSession instead.
+  virtual TunnelSession* MakeTunnelSession(Session* session,
+                                           talk_base::Thread* stream_thread,
+                                           TunnelSessionRole role);
 
   buzz::Jid jid_;
   SessionManager* session_manager_;
   std::vector<TunnelSession*> sessions_;
+  std::string namespace_;
   bool shutdown_;
+};
+
+class TunnelSessionClient 
+  : public TunnelSessionClientBase, public sigslot::has_slots<>  {
+public:
+  TunnelSessionClient(const buzz::Jid& jid, SessionManager* manager);
+  TunnelSessionClient(const buzz::Jid& jid, SessionManager* manager,
+                      const std::string &ns);
+  virtual ~TunnelSessionClient();
+
+  virtual const SessionDescription* CreateSessionDescription(
+    const buzz::XmlElement* element);
+  virtual buzz::XmlElement* TranslateSessionDescription(
+    const SessionDescription* description);
+
+  // Signal arguments are this, initiator, description, session
+  sigslot::signal4<TunnelSessionClient*, buzz::Jid, std::string, Session*>
+    SignalIncomingTunnel;
+
+  virtual void OnIncomingTunnel(const buzz::Jid &jid, 
+                                Session *session);
+  virtual SessionDescription *CreateOutgoingSessionDescription(
+                    const buzz::Jid &jid, const std::string &description);
+  virtual SessionDescription *CreateOutgoingSessionDescription(
+                                                        Session *incoming);
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -105,25 +146,25 @@ private:
 class PseudoTcpChannel;
 
 class TunnelSession : public sigslot::has_slots<> {
-public:
+ public:
   // Signalling thread methods
-  TunnelSession(TunnelSessionClient* client, Session* session,
+  TunnelSession(TunnelSessionClientBase* client, Session* session,
                 talk_base::Thread* stream_thread);
 
-  talk_base::StreamInterface* GetStream();
+  virtual talk_base::StreamInterface* GetStream();
   bool HasSession(Session* session);
   Session* ReleaseSession(bool channel_exists);
 
-private:
+ protected:
   virtual ~TunnelSession();
 
-  void OnSessionState(Session* session, Session::State state);
-  void OnInitiate();
-  void OnAccept();
-  void OnTerminate();
-  void OnChannelClosed(PseudoTcpChannel* channel);
+  virtual void OnSessionState(BaseSession* session, BaseSession::State state);
+  virtual void OnInitiate();
+  virtual void OnAccept();
+  virtual void OnTerminate();
+  virtual void OnChannelClosed(PseudoTcpChannel* channel);
 
-  TunnelSessionClient* client_;
+  TunnelSessionClientBase* client_;
   Session* session_;
   PseudoTcpChannel* channel_;
 };

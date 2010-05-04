@@ -21,6 +21,7 @@
 #include <config.h>
 
 #ifdef HAVE_ALSA_ASOUNDLIB_H
+
 #include "sndcard.h"
 #define ALSA_PCM_NEW_HW_PARAMS_API
 #include <alsa/asoundlib.h>

@@ -30,6 +30,9 @@
 #endif
 
 #include "talk/base/asynctcpsocket.h"
+
+#include <cstring>
+
 #include "talk/base/byteorder.h"
 #include "talk/base/common.h"
 #include "talk/base/logging.h"
@@ -41,9 +44,7 @@ namespace std {
 #endif
 
 #ifdef POSIX
-extern "C" {
 #include <errno.h>
-}
 #endif // POSIX
 
 namespace talk_base {
@@ -169,7 +170,7 @@ void AsyncTCPSocket::OnReadEvent(AsyncSocket* socket) {
   if (len < 0) {
     // TODO: Do something better like forwarding the error to the user.
     if (!socket_->IsBlocking()) {
-      LOG(LS_ERROR) << "recvfrom: " << errno << " " <<  std::strerror(errno);
+      LOG_ERR(LS_ERROR) << "recvfrom";
     }
     return;
   }
