@@ -2,34 +2,34 @@
  * libjingle
  * Copyright 2004--2005, Google Inc.
  *
- * Redistribution and use in source and binary forms, with or without 
+ * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- *  1. Redistributions of source code must retain the above copyright notice, 
+ *  1. Redistributions of source code must retain the above copyright notice,
  *     this list of conditions and the following disclaimer.
  *  2. Redistributions in binary form must reproduce the above copyright notice,
  *     this list of conditions and the following disclaimer in the documentation
  *     and/or other materials provided with the distribution.
- *  3. The name of the author may not be used to endorse or promote products 
+ *  3. The name of the author may not be used to endorse or promote products
  *     derived from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR IMPLIED
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF 
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
  * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO
- * EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+ * EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
  * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
  * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
  * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR 
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF 
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "talk/p2p/base/p2ptransport.h"
+#include "talk/base/base64.h"
 #include "talk/base/common.h"
 #include "talk/p2p/base/candidate.h"
 #include "talk/p2p/base/constants.h"
-#include "talk/base/helpers.h"
 #include "talk/p2p/base/p2ptransportchannel.h"
 #include "talk/p2p/base/sessionmanager.h"
 #include "talk/xmllite/qname.h"
@@ -128,20 +128,20 @@ bool P2PTransport::ParseCandidate(const buzz::XmlElement* stanza,
                                   const buzz::XmlElement* elem,
                                   Candidate* candidate) {
   // Check for all of the required attributes.
-  if (!elem->HasAttr(buzz::QN_NAME) || 
+  if (!elem->HasAttr(buzz::QN_NAME) ||
       !elem->HasAttr(QN_ADDRESS) ||
       !elem->HasAttr(QN_PORT) ||
       !elem->HasAttr(QN_USERNAME) ||
       !elem->HasAttr(QN_PREFERENCE) ||
-      !elem->HasAttr(QN_PROTOCOL) || 
+      !elem->HasAttr(QN_PROTOCOL) ||
       !elem->HasAttr(QN_GENERATION)) {
     return BadRequest(stanza, "candidate missing required attribute", NULL);
   }
-  
+
   // Make sure the channel named actually exists.
   if (!HasChannel(elem->Attr(buzz::QN_NAME))) {
-    scoped_ptr<buzz::XmlElement>
-      extra_info(new buzz::XmlElement(kQnP2pUnknownChannelName));
+    talk_base::scoped_ptr<buzz::XmlElement>
+        extra_info(new buzz::XmlElement(kQnP2pUnknownChannelName));
     extra_info->AddAttr(buzz::QN_NAME, elem->Attr(buzz::QN_NAME));
     return BadRequest(stanza, "channel named in candidate does not exist",
                       extra_info.get());
@@ -162,7 +162,7 @@ bool P2PTransport::ParseCandidate(const buzz::XmlElement* stanza,
   // Check that the username is not too long and does not use any bad chars.
   if (candidate->username().size() > kMaxUsernameSize)
     return BadRequest(stanza, "candidate username is too long", NULL);
-  if (!IsBase64Encoded(candidate->username()))
+  if (!talk_base::Base64::IsBase64Encoded(candidate->username()))
     return BadRequest(stanza,
                       "candidate username has non-base64 encoded characters",
                       NULL);

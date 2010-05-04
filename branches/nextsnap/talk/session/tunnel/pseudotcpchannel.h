@@ -71,6 +71,8 @@ public:
 
   sigslot::signal1<PseudoTcpChannel*> SignalChannelClosed;
 
+  void OnSessionTerminate(Session* session);
+
 private:
   class InternalStream;
   friend class InternalStream;

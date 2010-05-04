@@ -2,26 +2,26 @@
  * libjingle
  * Copyright 2004--2005, Google Inc.
  *
- * Redistribution and use in source and binary forms, with or without 
+ * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- *  1. Redistributions of source code must retain the above copyright notice, 
+ *  1. Redistributions of source code must retain the above copyright notice,
  *     this list of conditions and the following disclaimer.
  *  2. Redistributions in binary form must reproduce the above copyright notice,
  *     this list of conditions and the following disclaimer in the documentation
  *     and/or other materials provided with the distribution.
- *  3. The name of the author may not be used to endorse or promote products 
+ *  3. The name of the author may not be used to endorse or promote products
  *     derived from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR IMPLIED
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF 
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
  * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO
- * EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+ * EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
  * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
  * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
  * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR 
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF 
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
@@ -38,20 +38,33 @@
 #include "talk/xmllite/xmlelement.h"
 #include "talk/xmpp/constants.h"
 
+#if defined(FEATURE_ENABLE_PSTN)
+
 namespace {
 
-const int MSG_DESTROY_UNUSED_PORTS = 1;
+const uint32 MSG_DESTROY_UNUSED_PORTS = 1;
 
 }  // namespace
 
 namespace cricket {
 
-RawTransportChannel::RawTransportChannel(
-     const std::string &name, const std::string &session_type, RawTransport* transport,
-    PortAllocator *allocator)
-  : TransportChannelImpl(name, session_type), raw_transport_(transport),
-    allocator_(allocator), allocator_session_(NULL), stun_port_(NULL),
-    relay_port_(NULL), port_(NULL), use_relay_(false) {
+RawTransportChannel::RawTransportChannel(const std::string &name,
+                                         const std::string &session_type,
+                                         RawTransport* transport,
+                                         talk_base::Thread *worker_thread,
+                                         PortAllocator *allocator)
+  : TransportChannelImpl(name, session_type),
+    raw_transport_(transport),
+    allocator_(allocator),
+    allocator_session_(NULL),
+    stun_port_(NULL),
+    relay_port_(NULL),
+    port_(NULL),
+    use_relay_(false) {
+  if (worker_thread == NULL)
+    worker_thread_ = raw_transport_->session_manager()->worker_thread();
+  else
+    worker_thread_ = worker_thread;
 }
 
 RawTransportChannel::~RawTransportChannel() {
@@ -110,8 +123,7 @@ void RawTransportChannel::Reset() {
 }
 
 void RawTransportChannel::OnChannelMessage(const buzz::XmlElement* msg) {
-  bool valid = raw_transport_->ParseAddress(NULL, msg, &remote_address_);
-  ASSERT(valid);
+  VERIFY(raw_transport_->ParseAddress(NULL, msg, &remote_address_));
   ASSERT(!remote_address_.IsAny());
   set_readable(true);
 
@@ -120,11 +132,28 @@ void RawTransportChannel::OnChannelMessage(const buzz::XmlElement* msg) {
     SetWritable();
 }
 
+void RawTransportChannel::OnCandidate(const Candidate& candidate) {
+  remote_address_ = candidate.address();
+
+  set_readable(true);
+
+  if (port_ != NULL)
+    SetWritable();
+}
+
+void RawTransportChannel::OnRemoteAddress(const talk_base::SocketAddress& remote_address) {
+  remote_address_ = remote_address;
+  set_readable(true);
+
+  if (port_ != NULL)
+    SetWritable();
+}
+
 // Note about stun classification
 // Code to classify our NAT type and use the relay port if we are behind an
 // asymmetric NAT is under a FEATURE_ENABLE_STUN_CLASSIFICATION #define.
 // To turn this one we will have to enable a second stun address and make sure
-// that the relay server works for raw UDP.  
+// that the relay server works for raw UDP.
 //
 // Another option is to classify the NAT type early and not offer the raw
 // transport type at all if we can't support it.
@@ -203,20 +232,14 @@ void RawTransportChannel::SetPort(Port* port) {
 
   // We don't need any ports other than the one we picked.
   allocator_session_->StopGetAllPorts();
-  raw_transport_->session_manager()->worker_thread()->Post(
+  worker_thread_->Post(
       this, MSG_DESTROY_UNUSED_PORTS, NULL);
 
   // Send a message to the other client containing our address.
 
   ASSERT(port_->candidates().size() >= 1);
   ASSERT(port_->candidates()[0].protocol() == "udp");
-  talk_base::SocketAddress addr = port_->candidates()[0].address();
-
-  buzz::XmlElement* msg = new buzz::XmlElement(kQnRawChannel);
-  msg->SetAttr(buzz::QN_NAME, name());
-  msg->SetAttr(QN_ADDRESS, addr.IPAsString());
-  msg->SetAttr(QN_PORT, addr.PortAsString());
-  SignalChannelMessage(this, msg);
+  SignalCandidateReady(this, port_->candidates()[0]);
 
   // Read all packets from this port.
   port_->EnablePortPackets();
@@ -237,7 +260,7 @@ void RawTransportChannel::SetWritable() {
 }
 
 void RawTransportChannel::OnReadPacket(
-    Port* port, const char* data, size_t size, 
+    Port* port, const char* data, size_t size,
     const talk_base::SocketAddress& addr) {
   ASSERT(port_ == port);
   SignalReadPacket(this, data, size);
@@ -257,3 +280,4 @@ void RawTransportChannel::OnMessage(talk_base::Message* msg) {
 }
 
 }  // namespace cricket
+#endif // defined(FEATURE_ENABLE_PSTN)

@@ -25,67 +25,123 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef TALK_BASE_ASYNCSOCKET_H__
-#define TALK_BASE_ASYNCSOCKET_H__
+#ifndef TALK_BASE_ASYNCSOCKET_H_
+#define TALK_BASE_ASYNCSOCKET_H_
 
+#include "talk/base/common.h"
 #include "talk/base/sigslot.h"
 #include "talk/base/socket.h"
 
 namespace talk_base {
 
+// TODO(juberti): Remove Socket and rename AsyncSocket to Socket.
+
 // Provides the ability to perform socket I/O asynchronously.
-class AsyncSocket : public Socket, public sigslot::has_slots<>  {
-public:
-  virtual ~AsyncSocket() {}
+class AsyncSocket : public Socket {
+ public:
+  virtual AsyncSocket* Accept(SocketAddress* paddr) = 0;
 
-  sigslot::signal1<AsyncSocket*> SignalReadEvent;  // ready to read
-  sigslot::signal1<AsyncSocket*> SignalWriteEvent; // ready to write
-  sigslot::signal1<AsyncSocket*> SignalConnectEvent; // connected
-  sigslot::signal2<AsyncSocket*,int> SignalCloseEvent; // closed
-  // TODO: error
+  sigslot::signal1<AsyncSocket*> SignalReadEvent;        // ready to read
+  sigslot::signal1<AsyncSocket*> SignalWriteEvent;       // ready to write
+  sigslot::signal1<AsyncSocket*> SignalConnectEvent;     // connected
+  sigslot::signal2<AsyncSocket*, int> SignalCloseEvent;  // closed
 };
 
-class AsyncSocketAdapter : public AsyncSocket {
-public:
-  AsyncSocketAdapter(Socket * socket) : socket_(socket) {
+class AsyncSocketAdapter : public AsyncSocket, public sigslot::has_slots<> {
+ public:
+  // The adapted socket may explicitly be NULL, and later assigned using Attach.
+  // However, subclasses which support detached mode must override any methods
+  // that will be called during the detached period (usually GetState()), to
+  // avoid dereferencing a null pointer.
+  explicit AsyncSocketAdapter(AsyncSocket* socket) : socket_(NULL) {
+    Attach(socket);
   }
-  AsyncSocketAdapter(AsyncSocket * socket) : socket_(socket) {
-    socket->SignalConnectEvent.connect(this, &AsyncSocketAdapter::OnConnectEvent);
-    socket->SignalReadEvent.connect(this, &AsyncSocketAdapter::OnReadEvent);
-    socket->SignalWriteEvent.connect(this, &AsyncSocketAdapter::OnWriteEvent);
-    socket->SignalCloseEvent.connect(this, &AsyncSocketAdapter::OnCloseEvent);
+  virtual ~AsyncSocketAdapter() {
+    delete socket_;
   }
-  virtual ~AsyncSocketAdapter() { delete socket_; }
+  void Attach(AsyncSocket* socket) {
+    ASSERT(!socket_);
+    socket_ = socket;
+    if (socket_) {
+      socket_->SignalConnectEvent.connect(this,
+          &AsyncSocketAdapter::OnConnectEvent);
+      socket_->SignalReadEvent.connect(this,
+          &AsyncSocketAdapter::OnReadEvent);
+      socket_->SignalWriteEvent.connect(this,
+          &AsyncSocketAdapter::OnWriteEvent);
+      socket_->SignalCloseEvent.connect(this,
+          &AsyncSocketAdapter::OnCloseEvent);
+    }
+  }
+  virtual SocketAddress GetLocalAddress() const {
+    return socket_->GetLocalAddress();
+  }
+  virtual SocketAddress GetRemoteAddress() const {
+    return socket_->GetRemoteAddress();
+  }
+  virtual int Bind(const SocketAddress& addr) {
+    return socket_->Bind(addr);
+  }
+  virtual int Connect(const SocketAddress& addr) {
+    return socket_->Connect(addr);
+  }
+  virtual int Send(const void* pv, size_t cb) {
+    return socket_->Send(pv, cb);
+  }
+  virtual int SendTo(const void* pv, size_t cb, const SocketAddress& addr) {
+    return socket_->SendTo(pv, cb, addr);
+  }
+  virtual int Recv(void* pv, size_t cb) {
+    return socket_->Recv(pv, cb);
+  }
+  virtual int RecvFrom(void* pv, size_t cb, SocketAddress* paddr) {
+    return socket_->RecvFrom(pv, cb, paddr);
+  }
+  virtual int Listen(int backlog) {
+    return socket_->Listen(backlog);
+  }
+  virtual AsyncSocket* Accept(SocketAddress* paddr) {
+    return socket_->Accept(paddr);
+  }
+  virtual int Close() {
+    return socket_->Close();
+  }
+  virtual int GetError() const {
+    return socket_->GetError();
+  }
+  virtual void SetError(int error) {
+    return socket_->SetError(error);
+  }
+  virtual ConnState GetState() const {
+    return socket_->GetState();
+  }
+  virtual int EstimateMTU(uint16* mtu) {
+    return socket_->EstimateMTU(mtu);
+  }
+  virtual int GetOption(Option opt, int* value) {
+    return socket_->GetOption(opt, value);
+  }
+  virtual int SetOption(Option opt, int value) {
+    return socket_->SetOption(opt, value);
+  }
 
-  virtual SocketAddress GetLocalAddress() const { return socket_->GetLocalAddress(); }
-  virtual SocketAddress GetRemoteAddress() const { return socket_->GetRemoteAddress(); }
+ protected:
+  virtual void OnConnectEvent(AsyncSocket* socket) {
+    SignalConnectEvent(this);
+  }
+  virtual void OnReadEvent(AsyncSocket* socket) {
+    SignalReadEvent(this);
+  }
+  virtual void OnWriteEvent(AsyncSocket* socket) {
+    SignalWriteEvent(this);
+  }
+  virtual void OnCloseEvent(AsyncSocket* socket, int err) {
+    SignalCloseEvent(this, err);
+  }
 
-  virtual int Bind(const SocketAddress& addr) { return socket_->Bind(addr); }
-  virtual int Connect(const SocketAddress& addr) {return socket_->Connect(addr); }
-  virtual int Send(const void *pv, size_t cb) { return socket_->Send(pv, cb); }
-  virtual int SendTo(const void *pv, size_t cb, const SocketAddress& addr) { return socket_->SendTo(pv, cb, addr); }
-  virtual int Recv(void *pv, size_t cb) { return socket_->Recv(pv, cb); }
-  virtual int RecvFrom(void *pv, size_t cb, SocketAddress *paddr) { return socket_->RecvFrom(pv, cb, paddr); }
-  virtual int Listen(int backlog) { return socket_->Listen(backlog); }
-  virtual Socket *Accept(SocketAddress *paddr) { return socket_->Accept(paddr); }
-  virtual int Close() { return socket_->Close(); }
-  virtual int GetError() const { return socket_->GetError(); }
-  virtual void SetError(int error) { return socket_->SetError(error); }
-
-  virtual ConnState GetState() const { return socket_->GetState(); }
-
-  virtual int EstimateMTU(uint16* mtu) { return socket_->EstimateMTU(mtu); }
-  virtual int SetOption(Option opt, int value) { return socket_->SetOption(opt, value); }
-
-protected:
-  virtual void OnConnectEvent(AsyncSocket * socket) { SignalConnectEvent(this); }
-  virtual void OnReadEvent(AsyncSocket * socket) { SignalReadEvent(this); }
-  virtual void OnWriteEvent(AsyncSocket * socket) { SignalWriteEvent(this); }
-  virtual void OnCloseEvent(AsyncSocket * socket, int err) { SignalCloseEvent(this, err); }
-
-  Socket * socket_;
+  AsyncSocket* socket_;
 };
 
-} // namespace talk_base
+}  // namespace talk_base
 
-#endif // TALK_BASE_ASYNCSOCKET_H__
+#endif  // TALK_BASE_ASYNCSOCKET_H_

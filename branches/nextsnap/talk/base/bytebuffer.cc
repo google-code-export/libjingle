@@ -25,11 +25,13 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "talk/base/bytebuffer.h"
+
 #include <algorithm>
 #include <cassert>
+#include <cstring>
 
 #include "talk/base/basictypes.h"
-#include "talk/base/bytebuffer.h"
 #include "talk/base/byteorder.h"
 
 #if defined(_MSC_VER) && _MSC_VER < 1300
@@ -83,6 +85,16 @@ bool ByteBuffer::ReadUInt16(uint16& val) {
   }
 }
 
+bool ByteBuffer::ReadUInt24(uint32& val) {
+  uint32 v = 0;
+  if (!ReadBytes(reinterpret_cast<char*>(&v) + 1, 3)) {
+    return false;
+  } else {
+    val = NetworkToHost32(v);
+    return true;
+  }
+}
+
 bool ByteBuffer::ReadUInt32(uint32& val) {
   uint32 v;
   if (!ReadBytes(reinterpret_cast<char*>(&v), 4)) {
@@ -122,6 +134,11 @@ void ByteBuffer::WriteUInt16(uint16 val) {
   WriteBytes(reinterpret_cast<const char*>(&v), 2);
 }
 
+void ByteBuffer::WriteUInt24(uint32 val) {
+  uint32 v = HostToNetwork32(val);
+  WriteBytes(reinterpret_cast<const char*>(&v) + 1, 3);
+}
+
 void ByteBuffer::WriteUInt32(uint32 val) {
   uint32 v = HostToNetwork32(val);
   WriteBytes(reinterpret_cast<const char*>(&v), 4);
@@ -152,6 +169,13 @@ void ByteBuffer::Resize(size_t size) {
   end_   = len;
   size_  = size;
   bytes_ = new_bytes;
+}
+
+void ByteBuffer::Consume(size_t size) {
+  if (size > Length())
+    return;
+
+  start_ += size;
 }
 
 void ByteBuffer::Shift(size_t size) {

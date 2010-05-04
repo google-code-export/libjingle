@@ -36,6 +36,7 @@ namespace buzz { class XmlElement; }
 namespace cricket {
 
 class Transport;
+class Candidate;
 
 // Base class for real implementations of TransportChannel.  This includes some
 // methods called only by Transport, which do not need to be exposed to the
@@ -70,7 +71,13 @@ class TransportChannelImpl: public TransportChannel {
   // the Transport will have checked validity before forwarding.
   virtual void OnChannelMessage(const buzz::XmlElement* msg) = 0;
   sigslot::signal2<TransportChannelImpl*,
-                   buzz::XmlElement*> SignalChannelMessage;
+                   const Candidate&> SignalCandidateReady;
+
+  // handles sending & receiving data in non-xml form, for clients
+  // that don't use libjingle's XMPP stack
+  virtual void OnCandidate(const Candidate& candidate) = 0;
+  sigslot::signal2<TransportChannelImpl*,
+                   const std::string&> SignalAvailableCandidate;
 
  private:
   DISALLOW_EVIL_CONSTRUCTORS(TransportChannelImpl);

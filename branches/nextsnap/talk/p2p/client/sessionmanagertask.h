@@ -40,7 +40,7 @@ namespace cricket {
 
 class SessionManagerTask : public buzz::XmppTask {
  public:
-  SessionManagerTask(Task *parent, SessionManager *session_manager)
+  SessionManagerTask(TaskParent *parent, SessionManager *session_manager)
       : buzz::XmppTask(parent, buzz::XmppEngine::HL_SINGLE) {
     session_manager_ = session_manager;
   }

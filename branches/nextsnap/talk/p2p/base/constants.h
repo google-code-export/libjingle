@@ -25,8 +25,8 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _CRICKET_P2P_BASE_CONSTANTS_H_
-#define _CRICKET_P2P_BASE_CONSTANTS_H_
+#ifndef TALK_P2P_BASE_CONSTANTS_H__
+#define TALK_P2P_BASE_CONSTANTS_H__
 
 #include <string>
 #include "talk/xmllite/qname.h"
@@ -37,10 +37,12 @@
 namespace cricket {
 
 extern const std::string NS_EMPTY;
-extern const std::string NS_GOOGLESESSION;
+extern const std::string NS_GOOGLE_SESSION;
 #ifdef FEATURE_ENABLE_VOICEMAIL
-extern const std::string NS_GOOGLEVOICEMAIL;
+extern const std::string NS_GOOGLE_VOICEMAIL;
 #endif
+extern const std::string NS_GOOGLE_PHONE;
+extern const std::string NS_GOOGLE_VIDEO;
 
 extern const buzz::QName QN_SESSION;
 
@@ -52,6 +54,25 @@ extern const buzz::QName QN_VOICEMAIL_REGARDING;
 #endif
 
 extern const buzz::QName QN_INITIATOR;
+
+extern const buzz::QName QN_PHONE_DESCRIPTION;
+extern const buzz::QName QN_PHONE_PAYLOADTYPE;
+extern const buzz::QName QN_PHONE_PAYLOADTYPE_ID;
+extern const buzz::QName QN_PHONE_PAYLOADTYPE_NAME;
+extern const buzz::QName QN_PHONE_PAYLOADTYPE_RATE;
+extern const buzz::QName QN_PHONE_PAYLOADTYPE_BITRATE;
+extern const buzz::QName QN_PHONE_PAYLOADTYPE_CHANNELS;
+extern const buzz::QName QN_PHONE_SRCID;
+
+extern const buzz::QName QN_VIDEO_DESCRIPTION;
+extern const buzz::QName QN_VIDEO_PAYLOADTYPE;
+extern const buzz::QName QN_VIDEO_PAYLOADTYPE_ID;
+extern const buzz::QName QN_VIDEO_PAYLOADTYPE_NAME;
+extern const buzz::QName QN_VIDEO_PAYLOADTYPE_WIDTH;
+extern const buzz::QName QN_VIDEO_PAYLOADTYPE_HEIGHT;
+extern const buzz::QName QN_VIDEO_PAYLOADTYPE_FRAMERATE;
+extern const buzz::QName QN_VIDEO_SRCID;
+extern const buzz::QName QN_VIDEO_BANDWIDTH;
 
 extern const buzz::QName QN_ADDRESS;
 extern const buzz::QName QN_PORT;
@@ -67,4 +88,4 @@ extern const buzz::QName kQnLegacyCandidate;
 
 }  // namespace cricket
 
-#endif  // _CRICKET_P2P_BASE_CONSTANTS_H_
+#endif  // TALK_P2P_BASE_CONSTANTS_H__

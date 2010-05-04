@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2004--2006, Google Inc.
+ * Copyright 2004--2008, Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without 
  * modification, are permitted provided that the following conditions are met:
@@ -93,17 +93,16 @@ struct TunnelSessionDescription : public SessionDescription {
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-// TunnelSessionClient
+// TunnelSessionClientBase
 ///////////////////////////////////////////////////////////////////////////////
 
-TunnelSessionClient::TunnelSessionClient(const buzz::Jid& jid,
-                                         SessionManager* manager)
-  : jid_(jid), session_manager_(manager), shutdown_(false) {
-  // Register ourselves as the handler of tunnel sessions.
-  session_manager_->AddClient(NS_TUNNEL, this);
+TunnelSessionClientBase::TunnelSessionClientBase(const buzz::Jid& jid,
+                                SessionManager* manager, const std::string &ns)
+  : jid_(jid), session_manager_(manager), namespace_(ns), shutdown_(false) {
+  session_manager_->AddClient(namespace_, this);
 }
 
-TunnelSessionClient::~TunnelSessionClient() {
+TunnelSessionClientBase::~TunnelSessionClientBase() {
   shutdown_ = true;
   for (std::vector<TunnelSession*>::iterator it = sessions_.begin();
        it != sessions_.end();
@@ -111,7 +110,105 @@ TunnelSessionClient::~TunnelSessionClient() {
      Session* session = (*it)->ReleaseSession(true);
      session_manager_->DestroySession(session);
   }
-  session_manager_->RemoveClient(NS_TUNNEL);
+  session_manager_->RemoveClient(namespace_);
+}
+
+void TunnelSessionClientBase::OnSessionCreate(Session* session, bool received) {
+  LOG(LS_INFO) << "TunnelSessionClientBase::OnSessionCreate: received=" 
+               << received;
+  ASSERT(session_manager_->signaling_thread()->IsCurrent());
+  if (received)
+    sessions_.push_back(
+        MakeTunnelSession(session, talk_base::Thread::Current(), RESPONDER));
+}
+
+void TunnelSessionClientBase::OnSessionDestroy(Session* session) {
+  LOG(LS_INFO) << "TunnelSessionClientBase::OnSessionDestroy";
+  ASSERT(session_manager_->signaling_thread()->IsCurrent());
+  if (shutdown_)
+    return;
+  for (std::vector<TunnelSession*>::iterator it = sessions_.begin();
+       it != sessions_.end();
+       ++it) {
+    if ((*it)->HasSession(session)) {
+      VERIFY((*it)->ReleaseSession(false) == session);
+      sessions_.erase(it);
+      return;
+    }
+  }
+}
+
+talk_base::StreamInterface* TunnelSessionClientBase::CreateTunnel(
+    const buzz::Jid& to, const std::string& description) {
+  // Valid from any thread
+  CreateTunnelData data;
+  data.jid = to;
+  data.description = description;
+  data.thread = talk_base::Thread::Current();
+  session_manager_->signaling_thread()->Send(this, MSG_CREATE_TUNNEL, &data);
+  return data.stream;
+}
+
+talk_base::StreamInterface* TunnelSessionClientBase::AcceptTunnel(
+    Session* session) {
+  ASSERT(session_manager_->signaling_thread()->IsCurrent());
+  TunnelSession* tunnel = NULL;
+  for (std::vector<TunnelSession*>::iterator it = sessions_.begin();
+       it != sessions_.end();
+       ++it) {
+    if ((*it)->HasSession(session)) {
+      tunnel = *it;
+      break;
+    }
+  }
+  ASSERT(tunnel != NULL);
+
+  session->Accept(CreateOutgoingSessionDescription(session));
+  return tunnel->GetStream();
+}
+
+void TunnelSessionClientBase::DeclineTunnel(Session* session) {
+  ASSERT(session_manager_->signaling_thread()->IsCurrent());
+  session->Reject();
+}
+
+void TunnelSessionClientBase::OnMessage(talk_base::Message* pmsg) {
+  if (pmsg->message_id == MSG_CREATE_TUNNEL) {
+    ASSERT(session_manager_->signaling_thread()->IsCurrent());
+    CreateTunnelData* data = static_cast<CreateTunnelData*>(pmsg->pdata);
+    Session* session = session_manager_->CreateSession(jid_.Str(), namespace_);
+    TunnelSession* tunnel = MakeTunnelSession(session, data->thread,
+                                              INITIATOR);
+    sessions_.push_back(tunnel);
+    SessionDescription *desc = 
+                CreateOutgoingSessionDescription(data->jid, data->description);
+    session->Initiate(data->jid.Str(), NULL, desc);
+    data->stream = tunnel->GetStream();
+  }
+}
+
+TunnelSession* TunnelSessionClientBase::MakeTunnelSession(
+    Session* session, talk_base::Thread* stream_thread,
+    TunnelSessionRole /*role*/) {
+  return new TunnelSession(this, session, stream_thread);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// TunnelSessionClient
+///////////////////////////////////////////////////////////////////////////////
+
+TunnelSessionClient::TunnelSessionClient(const buzz::Jid& jid,
+                                         SessionManager* manager,
+                                         const std::string &ns)
+    : TunnelSessionClientBase(jid, manager, ns) {
+}
+
+TunnelSessionClient::TunnelSessionClient(const buzz::Jid& jid,
+                                         SessionManager* manager)
+    : TunnelSessionClientBase(jid, manager, NS_TUNNEL) {
+}
+
+TunnelSessionClient::~TunnelSessionClient() {
 }
 
 const SessionDescription* TunnelSessionClient::CreateSessionDescription(
@@ -135,82 +232,29 @@ buzz::XmlElement* TunnelSessionClient::TranslateSessionDescription(
   return root;
 }
 
-void TunnelSessionClient::OnSessionCreate(Session* session, bool received) {
-  LOG(LS_INFO) << "TunnelSessionClient::OnSessionCreate: received=" << received;
-  ASSERT(session_manager_->signaling_thread()->IsCurrent());
-  if (received)
-    sessions_.push_back(
-      new TunnelSession(this, session, talk_base::Thread::Current()));
+void TunnelSessionClient::OnIncomingTunnel(const buzz::Jid &jid, 
+                                           Session *session) {
+  const TunnelSessionDescription *desc = 
+    static_cast<const TunnelSessionDescription*>(session->remote_description());
+
+  SignalIncomingTunnel(this, jid, desc->description, session);
 }
 
-void TunnelSessionClient::OnSessionDestroy(Session* session) {
-  LOG(LS_INFO) << "TunnelSessionClient::OnSessionDestroy";
-  ASSERT(session_manager_->signaling_thread()->IsCurrent());
-  if (shutdown_)
-    return;
-  for (std::vector<TunnelSession*>::iterator it = sessions_.begin();
-       it != sessions_.end();
-       ++it) {
-    if ((*it)->HasSession(session)) {
-      VERIFY((*it)->ReleaseSession(false) == session);
-      sessions_.erase(it);
-      return;
-    }
-  }
+SessionDescription *TunnelSessionClient::CreateOutgoingSessionDescription(
+    const buzz::Jid &jid, const std::string &description) {
+  return new TunnelSessionDescription(description);
 }
 
-talk_base::StreamInterface* TunnelSessionClient::CreateTunnel(
-    const buzz::Jid& to, const std::string& description) {
-  // Valid from any thread
-  CreateTunnelData data;
-  data.jid = to;
-  data.description = description;
-  data.thread = talk_base::Thread::Current();
-  session_manager_->signaling_thread()->Send(this, MSG_CREATE_TUNNEL, &data);
-  return data.stream;
-}
-
-talk_base::StreamInterface* TunnelSessionClient::AcceptTunnel(
-    Session* session) {
-  ASSERT(session_manager_->signaling_thread()->IsCurrent());
-  TunnelSession* tunnel = NULL;
-  for (std::vector<TunnelSession*>::iterator it = sessions_.begin();
-       it != sessions_.end();
-       ++it) {
-    if ((*it)->HasSession(session)) {
-      tunnel = *it;
-      break;
-    }
-  }
-  ASSERT(tunnel != NULL);
-
+SessionDescription *TunnelSessionClient::CreateOutgoingSessionDescription(
+    Session *session) {
   const TunnelSessionDescription* in_desc =
     static_cast<const TunnelSessionDescription*>(
       session->remote_description());
   TunnelSessionDescription* out_desc = new TunnelSessionDescription(
     in_desc->description);
-  session->Accept(out_desc);
-  return tunnel->GetStream();
-}
 
-void TunnelSessionClient::DeclineTunnel(Session* session) {
-  ASSERT(session_manager_->signaling_thread()->IsCurrent());
-  session->Reject();
+  return out_desc;
 }
-
-void TunnelSessionClient::OnMessage(talk_base::Message* pmsg) {
-  if (pmsg->message_id == MSG_CREATE_TUNNEL) {
-    ASSERT(session_manager_->signaling_thread()->IsCurrent());
-    CreateTunnelData* data = static_cast<CreateTunnelData*>(pmsg->pdata);
-    Session* session = session_manager_->CreateSession(jid_.Str(), NS_TUNNEL);
-    TunnelSession* tunnel = new TunnelSession(this, session, data->thread);
-    sessions_.push_back(tunnel);
-    TunnelSessionDescription* desc = new TunnelSessionDescription(data->description);
-    session->Initiate(data->jid.Str(), NULL, desc);
-    data->stream = tunnel->GetStream();
-  }
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 // TunnelSession
 ///////////////////////////////////////////////////////////////////////////////
@@ -219,7 +263,7 @@ void TunnelSessionClient::OnMessage(talk_base::Message* pmsg) {
 // Signalling thread methods
 //
 
-TunnelSession::TunnelSession(TunnelSessionClient* client, Session* session,
+TunnelSession::TunnelSession(TunnelSessionClientBase* client, Session* session,
                              talk_base::Thread* stream_thread)
     : client_(client), session_(session), channel_(NULL) {
   ASSERT(client_ != NULL);
@@ -258,7 +302,8 @@ Session* TunnelSession::ReleaseSession(bool channel_exists) {
   return session;
 }
 
-void TunnelSession::OnSessionState(Session* session, Session::State state) {
+void TunnelSession::OnSessionState(BaseSession* session,
+                                   BaseSession::State state) {
   LOG(LS_INFO) << "TunnelSession::OnSessionState("
                << talk_base::nonnull(
                     talk_base::FindLabel(state, SESSION_STATES), "Unknown")
@@ -281,20 +326,15 @@ void TunnelSession::OnSessionState(Session* session, Session::State state) {
     // ReleaseSession should have been called before this.
     ASSERT(false);
     break;
+  default:
+    break;
   }
 }
 
 void TunnelSession::OnInitiate() {
-  const TunnelSessionDescription* in_desc =
-    static_cast<const TunnelSessionDescription*>(
-      session_->remote_description());
-
   ASSERT(client_ != NULL);
   ASSERT(session_ != NULL);
-  client_->SignalIncomingTunnel(client_,
-                                buzz::Jid(session_->remote_name()),
-                                in_desc->description,
-                                session_);
+  client_->OnIncomingTunnel(buzz::Jid(session_->remote_name()), session_);
 }
 
 void TunnelSession::OnAccept() {
@@ -303,6 +343,8 @@ void TunnelSession::OnAccept() {
 }
 
 void TunnelSession::OnTerminate() {
+  ASSERT(channel_ != NULL);
+  channel_->OnSessionTerminate(session_);
 }
 
 void TunnelSession::OnChannelClosed(PseudoTcpChannel* channel) {

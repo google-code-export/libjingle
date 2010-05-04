@@ -28,6 +28,8 @@
 #ifndef TALK_BASE_COMMON_H__
 #define TALK_BASE_COMMON_H__
 
+#include "talk/base/constructormagic.h"
+
 #if defined(_MSC_VER)
 // warning C4355: 'this' : used in base member initializer list
 #pragma warning(disable:4355)
@@ -61,7 +63,11 @@ inline void Unused(const void *) { }
 // Assertions
 /////////////////////////////////////////////////////////////////////////////
 
-#ifdef ENABLE_DEBUG
+#ifndef ENABLE_DEBUG
+#define ENABLE_DEBUG _DEBUG
+#endif  // !defined(ENABLE_DEBUG)
+
+#if ENABLE_DEBUG
 
 namespace talk_base {
 
@@ -69,23 +75,27 @@ namespace talk_base {
 void Break();
 
 // LogAssert writes information about an assertion to the log
-void LogAssert(const char * function, const char * file, int line, const char * expression);
+void LogAssert(const char * function, const char * file, int line,
+               const char * expression);
 
-inline void Assert(bool result, const char * function, const char * file, int line, const char * expression) {
+inline bool Assert(bool result, const char * function, const char * file,
+                   int line, const char * expression) {
   if (!result) {
     LogAssert(function, file, line, expression);
     Break();
+    return false;
   }
+  return true;
 }
 
-}; // namespace talk_base
+}  // namespace talk_base
 
 #if defined(_MSC_VER) && _MSC_VER < 1300
 #define __FUNCTION__ ""
 #endif
 
 #ifndef ASSERT
-#define ASSERT(x) talk_base::Assert((x),__FUNCTION__,__FILE__,__LINE__,#x)
+#define ASSERT(x) (void)talk_base::Assert((x),__FUNCTION__,__FILE__,__LINE__,#x)
 #endif
 
 #ifndef VERIFY
@@ -94,12 +104,18 @@ inline void Assert(bool result, const char * function, const char * file, int li
 
 #else // !ENABLE_DEBUG
 
+namespace talk_base {
+
+inline bool ImplicitCastToBool(bool result) { return result; }
+
+}  // namespace talk_base
+
 #ifndef ASSERT
 #define ASSERT(x) (void)0
 #endif
 
 #ifndef VERIFY
-#define VERIFY(x) (void)(x)
+#define VERIFY(x) talk_base::ImplicitCastToBool(x)
 #endif
 
 #endif // !ENABLE_DEBUG
@@ -108,13 +124,5 @@ inline void Assert(bool result, const char * function, const char * file, int li
 #define CTA_UNIQUE_NAME                 MAKE_NAME(__LINE__)
 #define CTA_MAKE_NAME(line)             MAKE_NAME2(line)
 #define CTA_MAKE_NAME2(line)            constraint_ ## line
-
-//////////////////////////////////////////////////////////////////////
-
-// A macro to disallow the evil copy constructor and operator= functions
-// This should be used in the private: declarations for a class
-#define DISALLOW_EVIL_CONSTRUCTORS(TypeName)    \
-  TypeName(const TypeName&);                    \
-  void operator=(const TypeName&)
 
 #endif // TALK_BASE_COMMON_H__

@@ -25,7 +25,11 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "talk/base/basicdefs.h"
+#include "talk/p2p/base/pseudotcp.h"
+
+#include <cstdio>
+#include <cstdlib>
+
 #include "talk/base/basictypes.h"
 #include "talk/base/byteorder.h"
 #include "talk/base/common.h"
@@ -33,13 +37,6 @@
 #include "talk/base/socket.h"
 #include "talk/base/stringutils.h"
 #include "talk/base/time.h"
-#include "talk/p2p/base/pseudotcp.h"
-
-#ifdef POSIX
-extern "C" {
-#include <errno.h>
-}
-#endif // POSIX
 
 // The following logging is for detailed (packet-level) pseudotcp analysis only.
 #define _DBG_NONE     0
@@ -215,7 +212,7 @@ void ReportStats() {
 
 uint32 PseudoTcp::Now() {
 #if 0  // Use this to synchronize timers with logging timestamps (easier debug)
-  return talk_base::ElapsedTime();
+  return talk_base::TimeSince(StartTime());
 #else
   return talk_base::Time();
 #endif
@@ -567,19 +564,19 @@ PseudoTcp::clock_check(uint32 now, long& nTimeout) {
   nTimeout = DEFAULT_TIMEOUT;
 
   if (m_t_ack) {
-    nTimeout = talk_base::_min(nTimeout, 
+    nTimeout = talk_base::_min<int32>(nTimeout,
       talk_base::TimeDiff(m_t_ack + ACK_DELAY, now));
   }
   if (m_rto_base) {
-    nTimeout = talk_base::_min(nTimeout, 
+    nTimeout = talk_base::_min<int32>(nTimeout,
       talk_base::TimeDiff(m_rto_base + m_rx_rto, now));
   }
   if (m_snd_wnd == 0) {
-    nTimeout = talk_base::_min(nTimeout, talk_base::TimeDiff(m_lastsend + m_rx_rto, now));
+    nTimeout = talk_base::_min<int32>(nTimeout, talk_base::TimeDiff(m_lastsend + m_rx_rto, now));
   }
 #if PSEUDO_KEEPALIVE
   if (m_state == TCP_ESTABLISHED) {
-    nTimeout = talk_base::_min(nTimeout, 
+    nTimeout = talk_base::_min<int32>(nTimeout,
       talk_base::TimeDiff(m_lasttraffic + (m_bOutgoing ? IDLE_PING * 3/2 : IDLE_PING), now));
   }
 #endif // PSEUDO_KEEPALIVE
@@ -661,7 +658,8 @@ PseudoTcp::process(Segment& seg) {
           m_rx_rttvar = (3 * m_rx_rttvar + abs(long(rtt - m_rx_srtt))) / 4;
           m_rx_srtt = (7 * m_rx_srtt + rtt) / 8;
         }
-        m_rx_rto = bound(MIN_RTO, m_rx_srtt + talk_base::_max(1LU, 4 * m_rx_rttvar), MAX_RTO);
+        m_rx_rto = bound(MIN_RTO, m_rx_srtt +
+            talk_base::_max<uint32>(1, 4 * m_rx_rttvar), MAX_RTO);
 #if _DEBUGMSG >= _DBG_VERBOSE
         LOG(LS_INFO) << "rtt: " << rtt
                      << "  srtt: " << m_rx_srtt
@@ -721,7 +719,7 @@ PseudoTcp::process(Segment& seg) {
       if (m_cwnd < m_ssthresh) {
         m_cwnd += m_mss;
       } else {
-        m_cwnd += talk_base::_max(1LU, m_mss * m_mss / m_cwnd);
+        m_cwnd += talk_base::_max<uint32>(1, m_mss * m_mss / m_cwnd);
       }
     }
 

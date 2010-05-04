@@ -30,7 +30,6 @@
 
 #include "talk/base/thread.h"
 #include "talk/p2p/base/portallocator.h"
-#include "talk/p2p/base/session.h"
 #include "talk/p2p/base/sessionid.h"
 #include "talk/base/sigslot.h"
 
@@ -46,6 +45,7 @@ class XmlElement;
 namespace cricket {
 
 class Session;
+class BaseSession;
 class SessionClient;
 
 // SessionManager manages session instances
@@ -97,7 +97,7 @@ class SessionManager : public sigslot::has_slots<> {
 
   // Called when we receive a stanza for which IsSessionMessage is true.
   void OnIncomingMessage(const buzz::XmlElement* stanza);
-  
+
   // Called when we get a response to a message that we sent.
   void OnIncomingResponse(const buzz::XmlElement* orig_stanza,
                           const buzz::XmlElement* response_stanza);
@@ -156,7 +156,7 @@ class SessionManager : public sigslot::has_slots<> {
 
   // Creates and returns an error message from the given components.  The
   // caller is responsible for deleting this.
-  buzz::XmlElement* SessionManager::CreateErrorMessage(
+  buzz::XmlElement* CreateErrorMessage(
       const buzz::XmlElement* stanza,
       const buzz::QName& name,
       const std::string& type,
@@ -170,8 +170,10 @@ class SessionManager : public sigslot::has_slots<> {
   void OnOutgoingMessage(Session* session, const buzz::XmlElement* stanza);
 
   // Called each time a session has an error to send.
-  void OnErrorMessage(Session* session, const buzz::XmlElement* stanza,
-                      const buzz::QName& name, const std::string& type,
+  void OnErrorMessage(BaseSession* session,
+                      const buzz::XmlElement* stanza,
+                      const buzz::QName& name,
+                      const std::string& type,
                       const std::string& text,
                       const buzz::XmlElement* extra_info);
 };

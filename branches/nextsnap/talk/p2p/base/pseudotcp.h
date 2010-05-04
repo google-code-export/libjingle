@@ -41,6 +41,7 @@ class PseudoTcp;
 
 class IPseudoTcpNotify {
 public:
+  virtual ~IPseudoTcpNotify() {}
   // Notification of tcp events
   virtual void OnTcpOpen(PseudoTcp * tcp) = 0;
   virtual void OnTcpReadable(PseudoTcp * tcp) = 0;

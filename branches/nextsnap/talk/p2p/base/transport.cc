@@ -91,7 +91,7 @@ TransportChannelImpl* Transport::CreateChannel_w(const std::string& name, const 
   impl->SignalWritableState.connect(this, &Transport::OnChannelWritableState);
   impl->SignalRequestSignaling.connect(
       this, &Transport::OnChannelRequestSignaling);
-  impl->SignalChannelMessage.connect(this, &Transport::OnChannelMessage);
+  impl->SignalCandidateReady.connect(this, &Transport::OnCandidateReady);
 
   talk_base::CritScope cs(&crit_);
   ASSERT(channels_.find(name) == channels_.end());
@@ -167,7 +167,7 @@ void Transport::OnConnecting_s() {
   ASSERT(session_manager_->signaling_thread()->IsCurrent());
   SignalConnecting(this);
 }
- 
+
 void Transport::DestroyAllChannels() {
   ASSERT(session_manager_->signaling_thread()->IsCurrent());
   session_manager_->worker_thread()->Send(this, MSG_DESTROYALLCHANNELS, NULL);
@@ -317,6 +317,13 @@ void Transport::OnChannelMessage(TransportChannelImpl* impl,
   }
 }
 
+void Transport::OnCandidateReady(TransportChannelImpl* impl,
+                                 const Candidate& candidate) {
+  buzz::XmlElement *elem = TranslateCandidate(candidate);
+
+  OnChannelMessage(impl, elem);
+}
+
 void Transport::OnChannelMessage_s() {
   ASSERT(session_manager_->signaling_thread()->IsCurrent());
   ASSERT(connect_requested_);
@@ -414,15 +421,15 @@ bool Transport::ParseAddress(const buzz::XmlElement* stanza,
   int port;
   ist >> port;
   address->SetPort(port);
- 
+
   // No address zero. 
   if (address->IsAny())
     return BadRequest(stanza, "candidate has address of zero", NULL);
-  
+
   // Always disallow addresses that refer to the local host.
   if (address->IsLocalIP() && !allow_local_ips_)
     return BadRequest(stanza, "candidate has local IP address", NULL);
-  
+
   // Disallow all ports below 1024, except for 80 and 443 on public addresses.
   if (port < 1024) { 
     if ((port != 80) && (port != 443))
