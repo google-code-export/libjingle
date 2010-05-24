@@ -51,9 +51,12 @@ inline void Unused(const void *) { }
 #ifndef WIN32
 #define strnicmp(x,y,n) strncasecmp(x,y,n)
 #define stricmp(x,y) strcasecmp(x,y)
+
+// TODO(sergeyu): Remove this. std::max should be used everywhere in the code.
+// NOMINMAX must be defined where we include <windows.h>.
 #define stdmax(x,y) std::max(x,y)
 #else
-#define stdmax(x,y) max(x,y)
+#define stdmax(x,y) talk_base::_max(x,y)
 #endif
 
 

@@ -59,6 +59,7 @@
 #include "talk/base/physicalsocketserver.h"
 #include "talk/base/time.h"
 #include "talk/base/winping.h"
+#include "talk/base/win32socketinit.h"
 
 // stm: this will tell us if we are on OSX
 #ifdef HAVE_CONFIG_H
@@ -72,24 +73,6 @@ typedef void* SockOptArg;
 #endif  // POSIX
 
 #ifdef WIN32
-class WinsockInitializer {
- public:
-  WinsockInitializer() {
-    WSADATA wsaData;
-    WORD wVersionRequested = MAKEWORD(1, 0);
-    err_ = WSAStartup(wVersionRequested, &wsaData);
-  }
-  ~WinsockInitializer() {
-    if (!err_)
-      WSACleanup();
-  }
-  int error() {
-    return err_;
-  }
- private:
-  int err_;
-};
-WinsockInitializer g_winsockinit;
 typedef char* SockOptArg;
 #endif
 
@@ -133,6 +116,14 @@ class PhysicalSocket : public AsyncSocket, public sigslot::has_slots<> {
     : ss_(ss), s_(s), enabled_events_(0), error_(0),
       state_((s == INVALID_SOCKET) ? CS_CLOSED : CS_CONNECTED),
       resolver_(NULL) {
+#ifdef WIN32
+    // EnsureWinsockInit() ensures that winsock is initialized. The default
+    // version of this function doesn't do anything because winsock is
+    // initialized by constructor of a static object. If neccessary libjingle
+    // users can link it with a different version of this function by replacing
+    // win32socketinit.cc. See win32socketinit.cc for more details.
+    EnsureWinsockInit();
+#endif
     if (s_ != INVALID_SOCKET) {
       enabled_events_ = kfRead | kfWrite;
 
