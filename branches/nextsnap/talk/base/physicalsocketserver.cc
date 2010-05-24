@@ -65,7 +65,7 @@
 #include "config.h"
 #endif
 
-#if defined(POSIX)
+#ifdef POSIX
 #include <netinet/tcp.h>  // for TCP_NODELAY
 #define IP_MTU 14 // Until this is integrated from linux/in.h to netinet/in.h
 typedef void* SockOptArg;
@@ -101,7 +101,7 @@ const int kfConnect = 0x0004;
 const int kfClose   = 0x0008;
 const int kfAccept  = 0x0010;
 
-// Standard MTUs
+// Standard MTUs, from RFC 1191
 const uint16 PACKET_MAXIMUMS[] = {
   65535,    // Theoretical maximum, Hyperchannel
   32000,    // Nothing
@@ -236,7 +236,10 @@ class PhysicalSocket : public AsyncSocket, public sigslot::has_slots<> {
     } else if (IsBlockingError(error_)) {
       state_ = CS_CONNECTING;
       enabled_events_ |= kfConnect;
+    } else {
+      return SOCKET_ERROR;
     }
+
     enabled_events_ |= kfRead | kfWrite;
     return 0;
   }
@@ -261,7 +264,7 @@ class PhysicalSocket : public AsyncSocket, public sigslot::has_slots<> {
     socklen_t optlen = sizeof(*value);
     int ret = ::getsockopt(s_, slevel, sopt, (SockOptArg)value, &optlen);
     if (ret != -1 && opt == OPT_DONTFRAGMENT) {
-#if defined (OS_LINUX)
+#ifdef LINUX
       *value = (*value != IP_PMTUDISC_DONT) ? 1 : 0;
 #endif
     }
@@ -274,7 +277,7 @@ class PhysicalSocket : public AsyncSocket, public sigslot::has_slots<> {
     if (TranslateOption(opt, &slevel, &sopt) == -1)
       return -1;
     if (opt == OPT_DONTFRAGMENT) {
-#if defined (OS_LINUX)
+#ifdef LINUX
       value = (value) ? IP_PMTUDISC_DO : IP_PMTUDISC_DONT;
 #endif
     }
@@ -283,7 +286,7 @@ class PhysicalSocket : public AsyncSocket, public sigslot::has_slots<> {
 
   int Send(const void *pv, size_t cb) {
     int sent = ::send(s_, reinterpret_cast<const char *>(pv), (int)cb,
-#if defined (OS_LINUX)
+#ifdef LINUX
         // Suppress SIGPIPE. Without this, attempting to send on a socket whose
         // other end is closed will result in a SIGPIPE signal being raised to
         // our process, which by default will terminate the process, which we
@@ -308,7 +311,7 @@ class PhysicalSocket : public AsyncSocket, public sigslot::has_slots<> {
     addr.ToSockAddr(&saddr);
     int sent = ::sendto(
         s_, (const char *)pv, (int)cb,
-#if defined (OS_LINUX)
+#ifdef LINUX
         // Suppress SIGPIPE. See above for explanation.
         MSG_NOSIGNAL,
 #else
@@ -416,7 +419,8 @@ class PhysicalSocket : public AsyncSocket, public sigslot::has_slots<> {
       return -1;
     }
 
-#ifdef WIN32
+#if defined(WIN32)
+    // Gets the interface MTU (TTL=1) for the interface used to reach |addr|.
     WinPing ping;
     if (!ping.IsValid()) {
       error_ = EINVAL; // can't think of a better error ID
@@ -429,17 +433,23 @@ class PhysicalSocket : public AsyncSocket, public sigslot::has_slots<> {
       if (result == WinPing::PING_FAIL) {
         error_ = EINVAL; // can't think of a better error ID
         return -1;
-      }
-      if (result != WinPing::PING_TOO_LARGE) {
+      } else if (result != WinPing::PING_TOO_LARGE) {
         *mtu = PACKET_MAXIMUMS[level];
         return 0;
       }
     }
 
     ASSERT(false);
-    return 0;
-#elif defined(POSIX)
-    // TODO (stm) figure out if this works for OS X
+    return -1;
+#elif defined(OSX)
+    // No simple way to do this on Mac OS X.
+    // SIOCGIFMTU would work if we knew which interface would be used, but
+    // figuring that out is pretty complicated. For now we'll return an error
+    // and let the caller pick a default MTU.
+    error_ = EINVAL;
+    return -1;
+#elif defined(LINUX)
+    // Gets the path MTU.
     int value;
     socklen_t vlen = sizeof(value);
     int err = getsockopt(s_, IPPROTO_IP, IP_MTU, &value, &vlen);
@@ -449,7 +459,7 @@ class PhysicalSocket : public AsyncSocket, public sigslot::has_slots<> {
     }
 
     ASSERT((0 <= value) && (value <= 65536));
-    *mtu = uint16(value);
+    *mtu = value;
     return 0;
 #endif
   }
@@ -482,7 +492,7 @@ class PhysicalSocket : public AsyncSocket, public sigslot::has_slots<> {
   static int TranslateOption(Option opt, int* slevel, int* sopt) {
     switch (opt) {
       case OPT_DONTFRAGMENT:
-#if defined(WIN32)
+#ifdef WIN32
         *slevel = IPPROTO_IP;
         *sopt = IP_DONTFRAGMENT;
         break;

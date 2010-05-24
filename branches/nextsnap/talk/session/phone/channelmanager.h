@@ -158,7 +158,8 @@ class ChannelManager : public talk_base::MessageHandler,
   void DestroyVideoChannel_w(VideoChannel* video_channel);
   Soundclip* CreateSoundclip_w();
   void DestroySoundclip_w(Soundclip* soundclip);
-  bool SetAudioOptions_w(int opts, int wave_in_device, int wave_out_device);
+  bool SetAudioOptions_w(int opts, const Device* in_dev,
+                         const Device* out_dev);
   bool SetOutputVolume_w(int level);
   bool SetLocalMonitor_w(bool enable);
   bool SetVideoOptions_w(const Device* cam_device);

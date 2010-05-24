@@ -33,6 +33,7 @@
 #include <strmif.h>  // must come before ks.h
 #include <ks.h>
 #include <ksmedia.h>
+#define INITGUID  // For PKEY_AudioEndpoint_GUID
 #include <mmdeviceapi.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <uuids.h>
@@ -65,16 +66,6 @@
 namespace cricket {
 // Initialize to empty string.
 const std::string DeviceManager::kDefaultDeviceName;
-
-// TODO(juberti): merge with MediaEngine::Device
-struct AudioDevice {
-  AudioDevice(const std::string& name, int id) : name(name), id(id) {}
-
-  // Human-readable name of the device.
-  std::string name;
-  // Id for use with MediaEngine::SetSoundDevices.
-  int id;
-};
 
 #if WIN32
 class DeviceWatcher : public talk_base::Win32Window {
@@ -109,8 +100,8 @@ static const wchar_t kFriendlyName[] = L"FriendlyName";
 static const wchar_t kDevicePath[] = L"DevicePath";
 static const char kUsbDevicePathPrefix[] = "\\\\?\\usb";
 static bool GetDevices(const CLSID& catid, std::vector<Device>* out);
-static bool GetCoreAudioDevices(bool input, std::vector<AudioDevice>* devs);
-static bool GetWaveDevices(bool input, std::vector<AudioDevice>* devs);
+static bool GetCoreAudioDevices(bool input, std::vector<Device>* devs);
+static bool GetWaveDevices(bool input, std::vector<Device>* devs);
 #elif OSX
 static const UInt32 kAudioDeviceNameLength = 64;
 static const int kVideoDeviceOpenAttempts = 3;
@@ -156,41 +147,34 @@ void DeviceManager::Terminate() {
 }
 
 int DeviceManager::GetCapabilities() {
-  std::vector<std::string> names;
+  std::vector<Device> devices;
   int caps = MediaEngine::VIDEO_RECV;
-  if (GetAudioInputDevices(&names) && !names.empty()) {
+  if (GetAudioInputDevices(&devices) && !devices.empty()) {
     caps |= MediaEngine::AUDIO_SEND;
   }
-  if (GetAudioOutputDevices(&names) && !names.empty()) {
+  if (GetAudioOutputDevices(&devices) && !devices.empty()) {
     caps |= MediaEngine::AUDIO_RECV;
   }
-  if (GetVideoCaptureDevices(&names) && !names.empty()) {
+  if (GetVideoCaptureDevices(&devices) && !devices.empty()) {
     caps |= MediaEngine::VIDEO_SEND;
   }
   return caps;
 }
 
-bool DeviceManager::GetAudioInputDevices(std::vector<std::string>* out) {
-  out->clear();
-  return GetAudioDeviceNames(true, out);
+bool DeviceManager::GetAudioInputDevices(std::vector<Device>* devices) {
+  return GetAudioDevicesByPlatform(true, devices);
 }
 
-bool DeviceManager::GetAudioOutputDevices(std::vector<std::string>* out) {
-  out->clear();
-  return GetAudioDeviceNames(false, out);
+bool DeviceManager::GetAudioOutputDevices(std::vector<Device>* devices) {
+  return GetAudioDevicesByPlatform(false, devices);
 }
 
-bool DeviceManager::GetVideoCaptureDevices(std::vector<std::string>* out) {
-  bool ret = false;
-  std::vector<Device> devices;
-  out->clear();
-  ret = GetVideoCaptureDevices(&devices);
-  if (ret) {
-    for (size_t i = 0; i < devices.size(); ++i) {
-      out->push_back(devices[i].name);
-    }
-  }
-  return ret;
+bool DeviceManager::GetAudioInputDevice(const std::string& name, Device* out) {
+  return GetAudioDevice(true, name, out);
+}
+
+bool DeviceManager::GetAudioOutputDevice(const std::string& name, Device* out) {
+  return GetAudioDevice(false, name, out);
 }
 
 bool DeviceManager::GetVideoCaptureDevices(std::vector<Device>* devices) {
@@ -225,71 +209,34 @@ bool DeviceManager::GetDefaultVideoCaptureDevice(Device* device) {
   return ret;
 }
 
-bool DeviceManager::GetAudioInputDeviceId(const std::string& name, int* id) {
-  return GetAudioDeviceId(true, name, id);
-}
 
-bool DeviceManager::GetAudioOutputDeviceId(const std::string& name, int* id) {
-  return GetAudioDeviceId(false, name, id);
-}
-
-// private functions
-
-bool DeviceManager::GetAudioDeviceNames(bool input,
-                                        std::vector<std::string>* names) {
-  std::vector<AudioDevice> info;
-  if (!GetAudioDevices(input, &info)) {
-    return false;
-  }
-
-  for (std::vector<AudioDevice>::const_iterator i = info.begin();
-       i != info.end(); ++i) {
-    names->push_back(i->name);
-  }
-
-  return true;
-}
-
-bool DeviceManager::GetAudioDeviceId(bool input, const std::string& in_name,
-                                     int* id) {
+bool DeviceManager::GetAudioDevice(bool is_input, const std::string& name,
+                                   Device* out) {
   // If the name is empty, return the default device id.
-  if (in_name.empty() || in_name == kDefaultDeviceName) {
-#ifdef OSX
-    // TODO(tommyw): Remove this once GIPS fixes their default device bug.
-    AudioDeviceID device_id;
-    UInt32 size = sizeof(device_id);
-    AudioHardwarePropertyID property_id = input ?
-        kAudioHardwarePropertyDefaultInputDevice :
-        kAudioHardwarePropertyDefaultOutputDevice;
-    OSStatus err = AudioHardwareGetProperty(property_id, &size, &device_id);
-    *id = !err ? static_cast<int>(device_id) : -1;
-#else
-    *id = -1;
-#endif
+  if (name.empty() || name == kDefaultDeviceName) {
+    *out = Device(name, -1);
     return true;
   }
 
-  // Else look up the id of the named device.
-  std::vector<AudioDevice> info;
-  if (!GetAudioDevices(input, &info)) {
-    return false;
-  }
-
-  for (std::vector<AudioDevice>::const_iterator i = info.begin();
-       i != info.end(); ++i) {
-    if (in_name == i->name) {
-      // Found it.
-      *id = i->id;
-      return true;
+  std::vector<Device> devices;
+  bool ret = is_input ? GetAudioInputDevices(&devices) :
+                        GetAudioOutputDevices(&devices);
+  if (ret) {
+    ret = false;
+    for (size_t i = 0; i < devices.size(); ++i) {
+      if (devices[i].name == name) {
+        *out = devices[i];
+        ret = true;
+        break;
+      }
     }
   }
-
-  // Couldn't find the named device.
-  return false;
+  return ret;
 }
 
-bool DeviceManager::GetAudioDevices(bool input,
-                                    std::vector<AudioDevice>* devs) {
+bool DeviceManager::GetAudioDevicesByPlatform(bool input,
+                                              std::vector<Device>* devs) {
+  devs->clear();
 #if defined(USE_TALK_SOUND)
   if (!sound_system_.get()) {
     return false;
@@ -310,7 +257,7 @@ bool DeviceManager::GetAudioDevices(bool input,
   for (SoundSystemInterface::SoundDeviceLocatorList::iterator i = list.begin();
        i != list.end();
        ++i, ++index) {
-    devs->push_back(AudioDevice((*i)->name(), index));
+    devs->push_back(Device((*i)->name(), index));
   }
   SoundSystemInterface::ClearSoundDeviceLocatorList(&list);
   sound_system_.release();
@@ -330,7 +277,7 @@ bool DeviceManager::GetAudioDevices(bool input,
     for (size_t i = 0; i < dev_ids.size(); ++i) {
       std::string name;
       if (GetAudioDeviceName(dev_ids[i], input, &name)) {
-        devs->push_back(AudioDevice(name, dev_ids[i]));
+        devs->push_back(Device(name, dev_ids[i]));
       }
     }
   }
@@ -372,7 +319,7 @@ bool DeviceManager::GetAudioDevices(bool input,
       // TODO(tschmelcher): We might want to identify devices with something
       // more specific than just their card number (e.g., the PCM names that
       // aplay -L prints out).
-      devs->push_back(AudioDevice(name, card));
+      devs->push_back(Device(name, card));
 
       LOG(LS_INFO) << "Found device: id = " << card << ", name = "
           << name;
@@ -450,7 +397,33 @@ bool GetDevices(const CLSID& catid, std::vector<Device>* devices) {
 }
 
 // Adapted from http://msdn.microsoft.com/en-us/library/dd370812(v=VS.85).aspx
-bool GetCoreAudioDevices(bool input, std::vector<AudioDevice>* devs) {
+HRESULT CricketDeviceFromImmDevice(IMMDevice* device, Device* out) {
+  CComPtr<IPropertyStore> props;
+  PROPVARIANT name, guid;
+
+  HRESULT hr = device->OpenPropertyStore(STGM_READ, &props);
+  if (FAILED(hr)) {
+    return hr;
+  }
+
+  // Get the endpoint's name and id.
+  PropVariantInit(&name);
+  hr = props->GetValue(PKEY_Device_FriendlyName, &name);
+  if (SUCCEEDED(hr)) {
+    PropVariantInit(&guid);
+    hr = props->GetValue(PKEY_AudioEndpoint_GUID, &guid);
+
+    if (SUCCEEDED(hr)) {
+      out->name = talk_base::ToUtf8(name.pwszVal);
+      out->id = talk_base::ToUtf8(guid.pwszVal);
+    }
+    PropVariantClear(&guid);
+  }
+  PropVariantClear(&name);
+  return hr;
+}
+
+bool GetCoreAudioDevices(bool input, std::vector<Device>* devs) {
   HRESULT hr = S_OK;
   CComPtr<IMMDeviceEnumerator> enumerator;
 
@@ -467,26 +440,20 @@ bool GetCoreAudioDevices(bool input, std::vector<AudioDevice>* devs) {
       if (SUCCEEDED(hr)) {
         for (unsigned int i = 0; i < count; i++) {
           CComPtr<IMMDevice> device;
-          CComPtr<IPropertyStore> props;
-          PROPVARIANT name;
 
           // Get pointer to endpoint number i.
           hr = devices->Item(i, &device);
-          if (FAILED(hr)) break;
-
-          hr = device->OpenPropertyStore(STGM_READ, &props);
-          if (FAILED(hr)) break;
-
-          // Get the endpoint's friendly-name property.
-          PropVariantInit(&name);
-          hr = props->GetValue(PKEY_Device_FriendlyName, &name);
           if (FAILED(hr)) {
-            PropVariantClear(&name);
             break;
           }
 
-          devs->push_back(AudioDevice(talk_base::ToUtf8(name.pwszVal), i));
-          PropVariantClear(&name);
+          Device dev;
+          hr = CricketDeviceFromImmDevice(device, &dev);
+          if (SUCCEEDED(hr)) {
+            devs->push_back(dev);
+          } else {
+            break;
+          }
         }
       }
     }
@@ -499,7 +466,7 @@ bool GetCoreAudioDevices(bool input, std::vector<AudioDevice>* devs) {
   return true;
 }
 
-bool GetWaveDevices(bool input, std::vector<AudioDevice>* devs) {
+bool GetWaveDevices(bool input, std::vector<Device>* devs) {
   // Note, we don't use the System Device Enumerator interface here since it
   // adds lots of pseudo-devices to the list, such as DirectSound and Wave
   // variants of the same device.
@@ -509,7 +476,8 @@ bool GetWaveDevices(bool input, std::vector<AudioDevice>* devs) {
       WAVEINCAPS caps;
       if (waveInGetDevCaps(i, &caps, sizeof(caps)) == MMSYSERR_NOERROR &&
           caps.wChannels > 0) {
-        devs->push_back(AudioDevice(talk_base::ToUtf8(caps.szPname), i));
+        devs->push_back(Device(talk_base::ToUtf8(caps.szPname),
+                               talk_base::ToString(i)));
       }
     }
   } else {
@@ -518,7 +486,7 @@ bool GetWaveDevices(bool input, std::vector<AudioDevice>* devs) {
       WAVEOUTCAPS caps;
       if (waveOutGetDevCaps(i, &caps, sizeof(caps)) == MMSYSERR_NOERROR &&
           caps.wChannels > 0) {
-        devs->push_back(AudioDevice(talk_base::ToUtf8(caps.szPname), i));
+        devs->push_back(Device(talk_base::ToUtf8(caps.szPname), i));
       }
     }
   }

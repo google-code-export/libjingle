@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "talk/base/sigslot.h"
+#include "talk/base/stringencode.h"
 #ifdef USE_TALK_SOUND
 #include "talk/sound/soundsystemfactory.h"
 #endif
@@ -40,13 +41,16 @@ namespace cricket {
 
 class DeviceWatcher;
 
-struct AudioDevice;
-
 // Used to represent an audio or video capture or render device.
 struct Device {
   Device() {}
+  Device(const std::string& first, int second)
+      : name(first),
+        id(talk_base::ToString(second)) {
+  }
   Device(const std::string& first, const std::string& second)
       : name(first), id(second) {}
+
   std::string name;
   std::string id;
 };
@@ -71,27 +75,25 @@ class DeviceManager {
   virtual int GetCapabilities();
 
   // Device enumeration
-  virtual bool GetAudioInputDevices(std::vector<std::string>* names);
-  virtual bool GetAudioOutputDevices(std::vector<std::string>* names);
-  virtual bool GetVideoCaptureDevices(std::vector<std::string>* names);
+  virtual bool GetAudioInputDevices(std::vector<Device>* devices);
+  virtual bool GetAudioOutputDevices(std::vector<Device>* devices);
+
+  bool GetAudioInputDevice(const std::string& name, Device* out);
+  bool GetAudioOutputDevice(const std::string& name, Device* out);
+
   virtual bool GetVideoCaptureDevices(std::vector<Device>* devs);
   virtual bool GetDefaultVideoCaptureDevice(Device* device);
   sigslot::signal0<> SignalDevicesChange;
-
-  // Helpers for dealing with APIs that require device ids.
-  virtual bool GetAudioInputDeviceId(const std::string& name, int* id);
-  virtual bool GetAudioOutputDeviceId(const std::string& name, int* id);
 
   void OnDevicesChange() { SignalDevicesChange(); }
 
   static const std::string kDefaultDeviceName;
 
  protected:
-  bool GetAudioDeviceNames(bool input, std::vector<std::string>* names);
-  bool GetAudioDeviceId(bool input, const std::string& name, int* id);
-
+  virtual bool GetAudioDevice(bool is_input, const std::string& name,
+                              Device* out);
  private:
-  bool GetAudioDevices(bool input, std::vector<AudioDevice>* devs);
+  bool GetAudioDevicesByPlatform(bool input, std::vector<Device>* devs);
 
   bool initialized_;
   DeviceWatcher* watcher_;

@@ -100,7 +100,7 @@ struct Enum {
 //////////////////////////////////////////////////////////////////////
 
 static const char* kHttpVersions[HVER_LAST+1] = {
-  "1.0", "1.1"
+  "1.0", "1.1", "Unknown"
 };
 ENUM(HttpVersion, kHttpVersions);
 
@@ -649,20 +649,29 @@ HttpResponseData::parseLeader(const char* line, size_t len) {
   size_t pos = 0;
   unsigned int vmajor, vminor, temp_scode;
   int temp_pos;
-  if ((sscanf(line, "HTTP/%u.%u %u%n",
-              &vmajor, &vminor, &temp_scode, &temp_pos) != 3)
-      || (vmajor != 1)) {
+  if (sscanf(line, "HTTP %u%n",
+             &temp_scode, &temp_pos) == 1) {
+    // This server's response has no version. :( NOTE: This happens for every
+    // response to requests made from Chrome plugins, regardless of the server's
+    // behaviour.
+    LOG(LS_VERBOSE) << "HTTP version missing from response";
+    version = HVER_UNKNOWN;
+  } else if ((sscanf(line, "HTTP/%u.%u %u%n",
+                     &vmajor, &vminor, &temp_scode, &temp_pos) == 3)
+             && (vmajor == 1)) {
+    // This server's response does have a version.
+    if (vminor == 0) {
+      version = HVER_1_0;
+    } else if (vminor == 1) {
+      version = HVER_1_1;
+    } else {
+      return HE_PROTOCOL;
+    }
+  } else {
     return HE_PROTOCOL;
   }
   scode = temp_scode;
   pos = static_cast<size_t>(temp_pos);
-  if (vminor == 0) {
-    version = HVER_1_0;
-  } else if (vminor == 1) {
-    version = HVER_1_1;
-  } else {
-    return HE_PROTOCOL;
-  }
   while ((pos < len) && isspace(static_cast<unsigned char>(line[pos]))) ++pos;
   message.assign(line + pos, len - pos);
   return HE_NONE;

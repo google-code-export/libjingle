@@ -98,7 +98,7 @@ class SrtpFilter {
   ~SrtpFilter();
 
   // Whether the filter is active (i.e. crypto has been properly negotiated).
-  bool IsActive() const { return state_ == ST_ACTIVE; }
+  bool IsActive() const;
 
   // Indicates which crypto algorithms and keys were contained in the offer.
   // offer_params should contain a list of available parameters to use, or none,

@@ -40,8 +40,14 @@
 #define HAVE_SRTP 1
 #endif
 
+// Enable this line to turn on SRTP debugging
+// #define SRTP_DEBUG
+
 #ifdef HAVE_SRTP
 #include "third_party/libsrtp/include/srtp.h"
+#ifdef _DEBUG
+extern "C" debug_module_t mod_srtp;
+#endif
 #else
 // SrtpFilter needs that constant.
 #define SRTP_MASTER_KEY_LEN 30
@@ -57,6 +63,10 @@ SrtpFilter::SrtpFilter() : state_(ST_INIT) {
 }
 
 SrtpFilter::~SrtpFilter() {
+}
+
+bool SrtpFilter::IsActive() const {
+  return (state_ == ST_ACTIVE);
 }
 
 bool SrtpFilter::SetOffer(const std::vector<CryptoParams>& offer_params,
@@ -243,7 +253,12 @@ bool SrtpSession::ProtectRtp(void* p, int in_len, int max_len, int* out_len) {
   if (max_len < need_len)
     return false;
   *out_len = in_len;
-  return (srtp_protect(session_, p, out_len) == err_status_ok);
+  int err = srtp_protect(session_, p, out_len);
+  if (err != err_status_ok) {
+    LOG(LS_WARNING) << "Failed to protect SRTP packet, err=" << err;
+    return false;
+  }
+  return true;
 }
 
 bool SrtpSession::ProtectRtcp(void* p, int in_len, int max_len, int* out_len) {
@@ -253,21 +268,36 @@ bool SrtpSession::ProtectRtcp(void* p, int in_len, int max_len, int* out_len) {
   if (max_len < need_len)
     return false;
   *out_len = in_len;
-  return (srtp_protect_rtcp(session_, p, out_len) == err_status_ok);
+  int err = srtp_protect_rtcp(session_, p, out_len);
+  if (err != err_status_ok) {
+    LOG(LS_WARNING) << "Failed to protect SRTCP packet, err=" << err;
+    return false;
+  }
+  return true;
 }
 
 bool SrtpSession::UnprotectRtp(void* p, int in_len, int* out_len) {
   if (!session_)
     return false;
   *out_len = in_len;
-  return (srtp_unprotect(session_, p, out_len) == err_status_ok);
+  int err = srtp_unprotect(session_, p, out_len);
+  if (err != err_status_ok) {
+    LOG(LS_WARNING) << "Failed to unprotect SRTP packet, err=" << err;
+    return false;
+  }
+  return true;
 }
 
 bool SrtpSession::UnprotectRtcp(void* p, int in_len, int* out_len) {
   if (!session_)
     return false;
   *out_len = in_len;
-  return (srtp_unprotect_rtcp(session_, p, out_len) == err_status_ok);
+  int err = srtp_unprotect_rtcp(session_, p, out_len);
+  if (err != err_status_ok) {
+    LOG(LS_WARNING) << "Failed to unprotect SRTCP packet, err=" << err;
+    return false;
+  }
+  return true;
 }
 
 bool SrtpSession::SetKey(int type, const std::string& cs,
@@ -307,6 +337,7 @@ bool SrtpSession::SetKey(int type, const std::string& cs,
 
   int err = srtp_create(&session_, &policy);
   if (err != err_status_ok) {
+    LOG(LS_ERROR) << "Failed to create SRTP session, err=" << err;
     return false;
   }
 
@@ -315,12 +346,21 @@ bool SrtpSession::SetKey(int type, const std::string& cs,
   return true;
 }
 
-
 bool SrtpSession::Init() {
   if (!inited_) {
-    if (srtp_init() != err_status_ok ||
-        srtp_install_event_handler(&SrtpSession::HandleEventThunk)
-            != err_status_ok) {
+    int err;
+#ifdef DEBUG_SRTP
+    debug_on(mod_srtp);
+#endif
+    err = srtp_init();
+    if (err != err_status_ok) {
+      LOG(LS_ERROR) << "Failed to init SRTP, err=" << err;
+      return false;
+    }
+
+    err = srtp_install_event_handler(&SrtpSession::HandleEventThunk);
+    if (err != err_status_ok) {
+      LOG(LS_ERROR) << "Failed to install SRTP event handler, err=" << err;
       return false;
     }
 

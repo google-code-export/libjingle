@@ -345,19 +345,18 @@ void PseudoTcpChannel::OnChannelConnectionChanged(TransportChannel* channel,
     return;
   }
 
+  uint16 mtu = 1280;  // safe default
   talk_base::scoped_ptr<Socket> mtu_socket(
-    worker_thread_->socketserver()
-           ->CreateSocket(SOCK_DGRAM));
-
-  uint16 mtu = 65535;
-  if (mtu_socket->Connect(addr) < 0) {
-    LOG_F(LS_ERROR) << "Socket::Connect: " << mtu_socket->GetError();
-  } else if (mtu_socket->EstimateMTU(&mtu) < 0) {
-    LOG_F(LS_ERROR) << "Socket::EstimateMTU: " << mtu_socket->GetError();
-  } else {
-    tcp_->NotifyMTU(mtu);
-    AdjustClock();
+      worker_thread_->socketserver()->CreateSocket(SOCK_DGRAM));
+  if (mtu_socket->Connect(addr) < 0 ||
+      mtu_socket->EstimateMTU(&mtu) < 0) {
+    LOG_F(LS_WARNING) << "Failed to estimate MTU, error="
+                      << mtu_socket->GetError();
   }
+
+  LOG_F(LS_VERBOSE) << "Using MTU of " << mtu << " bytes";
+  tcp_->NotifyMTU(mtu);
+  AdjustClock();
 }
 
 void PseudoTcpChannel::OnTcpOpen(PseudoTcp* tcp) {
