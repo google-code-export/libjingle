@@ -341,10 +341,23 @@ void BasicPortAllocatorSession::OnAllocate() {
         config = configs_.back();
 
       uint32 sequence_flags = flags();
+
+      // Disables phases that are not specified in this config.
+      if (!config || config->stun_address.IsNil()) {
+        // No STUN ports specified in this config.
+        sequence_flags |= PORTALLOCATOR_DISABLE_STUN;
+      }
+      if (!config || config->relays.empty()) {
+        // No relay ports specified in this config.
+        sequence_flags |= PORTALLOCATOR_DISABLE_RELAY;
+      }
+
+      // Disable phases that would only create ports equivalent to ones that we
+      // have already made.
       DisableEquivalentPhases(networks[i], config, &sequence_flags);
 
       if ((sequence_flags & DISABLE_ALL_PHASES) == DISABLE_ALL_PHASES) {
-        // New AllocationSequence would be completely redundant; don't make it.
+        // New AllocationSequence would have nothing to do, so don't make it.
         continue;
       }
 
@@ -668,15 +681,18 @@ void AllocationSequence::CreateStunPorts() {
     return;
   }
 
-  if (!config_ || config_->stun_address.IsNil()) {
-    LOG(LS_VERBOSE)
+  // If BasicPortAllocatorSession::OnAllocate left STUN ports enabled then we
+  // ought to have an address for them here.
+  ASSERT(config_ && !config_->stun_address.IsNil());
+  if (!(config_ && !config_->stun_address.IsNil())) {
+    LOG(LS_WARNING)
         << "AllocationSequence: No STUN server configured, skipping.";
     return;
   }
 
   Port* port = StunPort::Create(session_->network_thread(), NULL, network_,
-                               talk_base::SocketAddress(ip_, 0),
-                               config_->stun_address);
+                                talk_base::SocketAddress(ip_, 0),
+                                config_->stun_address);
   if (port)
     session_->AddAllocatedPort(port, this, PREF_LOCAL_STUN);
 }
@@ -687,8 +703,11 @@ void AllocationSequence::CreateRelayPorts() {
      return;
   }
 
-  if (!config_) {
-    LOG(LS_VERBOSE)
+  // If BasicPortAllocatorSession::OnAllocate left relay ports enabled then we
+  // ought to have a relay list for them here.
+  ASSERT(config_ && !config_->relays.empty());
+  if (!(config_ && !config_->relays.empty())) {
+    LOG(LS_WARNING)
         << "AllocationSequence: No relay server configured, skipping.";
     return;
   }
