@@ -29,7 +29,9 @@
 #define TALK_BASE_BYTEBUFFER_H_
 
 #include <string>
+
 #include "talk/base/basictypes.h"
+#include "talk/base/constructormagic.h"
 
 namespace talk_base {
 
@@ -67,6 +69,10 @@ class ByteBuffer {
   size_t size_;
   size_t start_;
   size_t end_;
+
+  // There are sensible ways to define these, but they aren't needed in our code
+  // base.
+  DISALLOW_COPY_AND_ASSIGN(ByteBuffer);
 };
 
 }  // namespace talk_base

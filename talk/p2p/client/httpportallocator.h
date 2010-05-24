@@ -40,6 +40,15 @@ namespace cricket {
 
 class HttpPortAllocator : public BasicPortAllocator {
  public:
+  // Records the port on the hosts that will receive HTTP requests.
+  static const int kHostPort;
+
+  // The number of HTTP requests we should attempt before giving up.
+  static const int kNumRetries;
+
+  // Records the URL that we will GET in order to create a session.
+  static const std::string kCreateSessionURL;
+
   HttpPortAllocator(talk_base::NetworkManager* network_manager,
                     const std::string& user_agent);
   virtual ~HttpPortAllocator();
@@ -85,17 +94,25 @@ class RequestData;
 
 class HttpPortAllocatorSession : public BasicPortAllocatorSession {
  public:
-  HttpPortAllocatorSession(HttpPortAllocator* allocator,
-                           const std::string& name,
-         const std::string& session_type,
-         const std::vector<talk_base::SocketAddress>& stun_hosts,
-         const std::vector<std::string>& relay_hosts,
-         const std::string& relay,
-         const std::string& agent);
-  ~HttpPortAllocatorSession() {}
+  HttpPortAllocatorSession(
+      HttpPortAllocator* allocator,
+      const std::string& name,
+      const std::string& session_type,
+      const std::vector<talk_base::SocketAddress>& stun_hosts,
+      const std::vector<std::string>& relay_hosts,
+      const std::string& relay,
+      const std::string& agent);
+  virtual ~HttpPortAllocatorSession() {}
+
+  const std::string& relay_token() const {
+    return relay_token_;
+  }
+  virtual void SendSessionRequest(const std::string& host, int port);
+  virtual void ReceiveSessionResponse(const std::string& response);
 
  protected:
   virtual void GetPortConfigurations();
+  void TryCreateRelaySession();
 
  private:
   virtual HttpPortAllocator* allocator() {
@@ -103,7 +120,6 @@ class HttpPortAllocatorSession : public BasicPortAllocatorSession {
         BasicPortAllocatorSession::allocator());
   }
 
-  void TryCreateRelaySession();
   void OnRequestDone(talk_base::SignalThread* request);
 
   std::vector<std::string> relay_hosts_;

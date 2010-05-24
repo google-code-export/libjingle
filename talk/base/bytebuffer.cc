@@ -68,7 +68,7 @@ ByteBuffer::ByteBuffer(const char* bytes) {
 }
 
 ByteBuffer::~ByteBuffer() {
-  delete bytes_;
+  delete[] bytes_;
 }
 
 bool ByteBuffer::ReadUInt8(uint8& val) {

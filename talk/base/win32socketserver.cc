@@ -329,7 +329,7 @@ int Win32Socket::Connect(const SocketAddress& addr) {
   if ((socket_ == INVALID_SOCKET) && !CreateT(SOCK_STREAM))
     return SOCKET_ERROR;
 
-  if (!SetAsync(FD_READ | FD_WRITE | FD_CONNECT | FD_CLOSE))
+  if (!sink_ && !SetAsync(FD_READ | FD_WRITE | FD_CONNECT | FD_CLOSE))
     return SOCKET_ERROR;
 
   // If we have an IP address, connect now.
@@ -362,9 +362,13 @@ int Win32Socket::DoConnect(const SocketAddress& addr) {
   connect_time_ = Time();
   int result = connect(socket_, reinterpret_cast<SOCKADDR*>(&saddr),
                        sizeof(saddr));
-  if (result == SOCKET_ERROR) {
+  if (result != SOCKET_ERROR) {
+    state_ = CS_CONNECTED;
+  } else {
     int code = WSAGetLastError();
-    if (code != WSAEWOULDBLOCK) {
+    if (code == WSAEWOULDBLOCK) {
+      state_ = CS_CONNECTING;
+    } else {
       ReportWSAError("WSAAsync:connect", code, addr);
       error_ = code;
       Close();
@@ -372,7 +376,7 @@ int Win32Socket::DoConnect(const SocketAddress& addr) {
     }
   }
   addr_ = addr;
-  state_ = CS_CONNECTING;
+
   return 0;
 }
 

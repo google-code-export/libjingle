@@ -34,7 +34,9 @@
 #include <algorithm>
 
 #include "talk/base/common.h"
+#include "talk/base/logging.h"
 #include "talk/base/sigslotrepeater.h"
+#include "talk/base/stringencode.h"
 #include "talk/session/phone/mediaengine.h"
 #include "talk/session/phone/soundclip.h"
 #ifdef USE_TALK_SOUND
@@ -74,11 +76,11 @@ struct CreationParams : public talk_base::MessageData {
 };
 
 struct AudioOptions : public talk_base::MessageData {
-  AudioOptions(int o, int wi, int wo)
-      : options(o), wave_in_device(wi), wave_out_device(wo) {}
+  AudioOptions(int o, const Device* in, const Device* out)
+      : options(o), in_device(in), out_device(out) {}
   int options;
-  int wave_in_device;
-  int wave_out_device;
+  const Device* in_device;
+  const Device* out_device;
   bool result;
 };
 
@@ -406,20 +408,19 @@ bool ChannelManager::GetAudioOptions(std::string* in_name,
 
 bool ChannelManager::SetAudioOptions(const std::string& in_name,
                                      const std::string& out_name, int opts) {
-  // Use DeviceManager to map device names to ids.
-  int in_dev, out_dev;
-  if (!device_manager_->GetAudioInputDeviceId(in_name, &in_dev) ||
-      !device_manager_->GetAudioOutputDeviceId(out_name, &out_dev)) {
+  // Get device ids from DeviceManager.
+  Device in_dev, out_dev;
+  if (!device_manager_->GetAudioInputDevice(in_name, &in_dev) ||
+      !device_manager_->GetAudioOutputDevice(out_name, &out_dev)) {
+    LOG(LS_WARNING) << "Device manager can't find selected device";
     return false;
   }
 
   // If we're initialized, pass the settings to the media engine.
-  bool ret;
+  bool ret = true;
   if (initialized_) {
-    AudioOptions options(opts, in_dev, out_dev);
+    AudioOptions options(opts, &in_dev, &out_dev);
     ret = (Send(MSG_SETAUDIOOPTIONS, &options) && options.result);
-  } else {
-    ret = true;
   }
 
   // If all worked well, save the values for use in GetAudioOptions.
@@ -431,7 +432,8 @@ bool ChannelManager::SetAudioOptions(const std::string& in_name,
   return ret;
 }
 
-bool ChannelManager::SetAudioOptions_w(int opts, int in_dev, int out_dev) {
+bool ChannelManager::SetAudioOptions_w(int opts, const Device* in_dev,
+    const Device* out_dev) {
   ASSERT(worker_thread_ == talk_base::Thread::Current());
   ASSERT(initialized_);
 
@@ -659,7 +661,7 @@ void ChannelManager::OnMessage(talk_base::Message* message) {
     case MSG_SETAUDIOOPTIONS: {
       AudioOptions* p = static_cast<AudioOptions*>(data);
       p->result = SetAudioOptions_w(p->options,
-                                    p->wave_in_device, p->wave_out_device);
+                                    p->in_device, p->out_device);
       break;
     }
     case MSG_SETOUTPUTVOLUME: {
@@ -709,16 +711,42 @@ void ChannelManager::OnMessage(talk_base::Message* message) {
   }
 }
 
+static void GetDeviceNames(const std::vector<Device>& devs,
+                           std::vector<std::string>* names) {
+  names->clear();
+  for (size_t i = 0; i < devs.size(); ++i) {
+    names->push_back(devs[i].name);
+  }
+}
+
 bool ChannelManager::GetAudioInputDevices(std::vector<std::string>* names) {
-  return device_manager_->GetAudioInputDevices(names);
+  names->clear();
+  std::vector<Device> devs;
+  bool ret = device_manager_->GetAudioInputDevices(&devs);
+  if (ret)
+    GetDeviceNames(devs, names);
+
+  return ret;
 }
 
 bool ChannelManager::GetAudioOutputDevices(std::vector<std::string>* names) {
-  return device_manager_->GetAudioOutputDevices(names);
+  names->clear();
+  std::vector<Device> devs;
+  bool ret = device_manager_->GetAudioOutputDevices(&devs);
+  if (ret)
+    GetDeviceNames(devs, names);
+
+  return ret;
 }
 
 bool ChannelManager::GetVideoCaptureDevices(std::vector<std::string>* names) {
-  return device_manager_->GetVideoCaptureDevices(names);
+  names->clear();
+  std::vector<Device> devs;
+  bool ret = device_manager_->GetVideoCaptureDevices(&devs);
+  if (ret)
+    GetDeviceNames(devs, names);
+
+  return ret;
 }
 
 }  // namespace cricket

@@ -50,6 +50,11 @@
 #include <unistd.h>
 #endif  // POSIX && !OSX
 
+#ifdef LINUX
+#include <ctype.h>
+#include <algorithm>
+#endif
+
 #include "talk/base/fileutils.h"
 #include "talk/base/pathutils.h"
 #include "talk/base/stream.h"
@@ -343,7 +348,7 @@ bool UnixFilesystem::GetAppPathname(Pathname* path) {
   if (success)
     path->SetPathname(path8);
   return success;
-#else
+#else  // OSX
   char buffer[NAME_MAX+1];
   size_t len = readlink("/proc/self/exe", buffer, ARRAY_SIZE(buffer) - 1);
   if (len <= 0)
@@ -351,13 +356,14 @@ bool UnixFilesystem::GetAppPathname(Pathname* path) {
   buffer[len] = '\0';
   path->SetPathname(buffer);
   return true;
-#endif  // !OSX && !OS_LINUX && !ANDROID
+#endif  // OSX
 }
 
 bool UnixFilesystem::GetAppDataFolder(Pathname* path, bool per_user) {
   ASSERT(!organization_name_.empty());
   ASSERT(!application_name_.empty());
-  std::string prefix;
+
+  // First get the base directory for app data.
 #ifdef OSX
   if (per_user) {
     // Use ~/Library/Application Support/<orgname>/<appname>/
@@ -373,32 +379,58 @@ bool UnixFilesystem::GetAppDataFolder(Pathname* path, bool per_user) {
     // TODO
     return false;
   }
-#elif defined(ANDROID)
+#elif defined(ANDROID)  // && !OSX
   // TODO: Check if the new disk allocation mechanism works
   // per-user and we don't have the per_user distinction.
   path->SetPathname(GetAndroidAppDataFolder(), "");
-#elif OS_LINUX  // && !OSX
+#elif defined(LINUX)  // && !OSX && !defined(ANDROID)
   if (per_user) {
-    // Use ~/.<orgname>/<appname>/
-    if (const char* dotdir = getenv("DOTDIR")) {
-      path->SetPathname(dotdir, "");
-    } else if (const char* home = getenv("HOME")) {
-      path->SetPathname(home, "");
-    } else if (passwd* pw = getpwuid(geteuid())) {
-      path->SetPathname(pw->pw_dir, "");
+    // We follow the recommendations in
+    // http://standards.freedesktop.org/basedir-spec/basedir-spec-latest.html
+    // It specifies separate directories for data and config files, but
+    // GetAppDataFolder() does not distinguish. We just return the config dir
+    // path.
+    const char* xdg_config_home = getenv("XDG_CONFIG_HOME");
+    if (xdg_config_home) {
+      path->SetPathname(xdg_config_home, "");
     } else {
-      return false;
+      // XDG says to default to $HOME/.config. We also support falling back to
+      // other synonyms for HOME if for some reason it is not defined.
+      const char* homedir;
+      if (const char* home = getenv("HOME")) {
+        homedir = home;
+      } else if (const char* dotdir = getenv("DOTDIR")) {
+        homedir = dotdir;
+      } else if (passwd* pw = getpwuid(geteuid())) {
+        homedir = pw->pw_dir;
+      } else {
+        return false;
+      }
+      path->SetPathname(homedir, "");
+      path->AppendFolder(".config");
     }
-    prefix = ".";
   } else {
-    // TODO: This should be set manually at program startup to a directory based
-    // on the app's configuration or commandline.  In the meantime, let's use
-    // "/var/cache/<orgname>/<appname>/"
+    // XDG does not define a standard directory for writable global data. Let's
+    // just use this.
     path->SetPathname("/var/cache/", "");
   }
-#endif  // OS_LINUX && !OSX
-  path->AppendFolder(prefix + organization_name_);
+#endif  // !OSX && !defined(ANDROID) && !defined(LINUX)
+
+  // Now add on a sub-path for our app.
+#if defined(OSX) || defined(ANDROID)
+  path->AppendFolder(organization_name_);
   path->AppendFolder(application_name_);
+#elif defined(LINUX)
+  // XDG says to use a single directory level, so we concatenate the org and app
+  // name with a hyphen. We also do the Linuxy thing and convert to all
+  // lowercase with no spaces.
+  std::string subdir(organization_name_);
+  subdir.append("-");
+  subdir.append(application_name_);
+  replace_substrs(" ", 1, "", 0, &subdir);
+  std::transform(subdir.begin(), subdir.end(), subdir.begin(), ::tolower);
+  path->AppendFolder(subdir);
+#endif
   return CreateFolder(*path);
 }
 
@@ -445,7 +477,7 @@ bool UnixFilesystem::GetDiskFreeSpace(const Pathname& path, int64 *freebytes) {
   if (0 != statvfs(existing_path.pathname().c_str(), &vfs))
     return false;
 #endif  // ANDROID
-#ifdef OS_LINUX
+#ifdef LINUX
   *freebytes = static_cast<int64>(vfs.f_bsize) * vfs.f_bavail;
 #elif defined(OSX)
   *freebytes = static_cast<int64>(vfs.f_frsize) * vfs.f_bavail;

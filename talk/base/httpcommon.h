@@ -72,8 +72,8 @@ enum HttpCode {
 };
 
 enum HttpVersion {
-  HVER_1_0, HVER_1_1,
-  HVER_LAST = HVER_1_1
+  HVER_1_0, HVER_1_1, HVER_UNKNOWN,
+  HVER_LAST = HVER_UNKNOWN
 };
 
 enum HttpVerb {

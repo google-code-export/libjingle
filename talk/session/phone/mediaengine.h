@@ -130,7 +130,8 @@ class MediaEngine {
   virtual bool SetDefaultVideoCodec(const VideoCodec& codec) = 0;
 
   // Device selection
-  virtual bool SetSoundDevices(int wave_in, int wave_out) = 0;
+  virtual bool SetSoundDevices(const Device* in_device,
+                               const Device* out_device) = 0;
   virtual bool SetVideoCaptureDevice(const Device* cam_device) = 0;
 
   // Device configuration
@@ -209,8 +210,9 @@ class CompositeMediaEngine : public MediaEngine {
     return video_.SetDefaultCodec(codec);
   }
 
-  virtual bool SetSoundDevices(int in, int out) {
-    return voice_.SetDevices(in, out);
+  virtual bool SetSoundDevices(const Device* in_device,
+                               const Device* out_device) {
+    return voice_.SetDevices(in_device, out_device);
   }
   virtual bool SetVideoCaptureDevice(const Device* cam_device) {
     return video_.SetCaptureDevice(cam_device);
@@ -273,7 +275,9 @@ class NullVoiceEngine {
     return NULL;
   }
   bool SetOptions(int opts) { return true; }
-  bool SetDevices(int in, int out) { return true; }
+  bool SetDevices(const Device* in_device, const Device* out_device) {
+    return true;
+  }
   bool SetOutputVolume(int level) { return true; }
   int GetInputLevel() { return 0; }
   bool SetLocalMonitor(bool enable) { return true; }
