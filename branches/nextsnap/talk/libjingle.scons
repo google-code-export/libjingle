@@ -19,6 +19,7 @@ talk.Library(env, name = "libjingle",
                ],
                mac_srcs = [
                  "base/macconversion.cc",
+                 "base/macutils.cc",
                  ],
                  posix_srcs = [
                    "base/unixfilesystem.cc",
