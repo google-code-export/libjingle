@@ -1,6 +1,6 @@
 #summary Frequently Asked Questions
 
-= What's is the status of libjingle =
+= What's is the status of libjingle? =
 
 While there hasn't been an update to the public version of libjingle for a while, a version of libjingle internal to Google has been under continual development.  We are currently preparing an update to the public version.  In the meantime, you can continue developing with version 0.4.   Updating to a newer version later shouldn't be a problem.  
 
