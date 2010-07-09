@@ -93,6 +93,12 @@ bool BaseChannel::RemoveStream(uint32 ssrc) {
   return true;
 }
 
+bool BaseChannel::SetRtcpCName(const std::string& cname) {
+  SetRtcpCNameData data(cname);
+  Send(MSG_SETRTCPCNAME, &data);
+  return data.result;
+}
+
 bool BaseChannel::SetLocalDescription(const MediaSessionDescription& desc,
                                       DescriptionType type) {
   SetDescriptionData data(desc, type);
@@ -363,6 +369,10 @@ bool BaseChannel::SetMaxSendBandwidth_w(int max_bandwidth) {
   return media_channel()->SetMaxSendBandwidth(max_bandwidth);
 }
 
+bool BaseChannel::SetRtcpCName_w(const std::string& cname) {
+  return media_channel()->SetRtcpCName(cname);
+}
+
 bool BaseChannel::SetSrtp_w(const std::vector<CryptoParams>& cryptos,
                             DescriptionType type, DescriptionSource src) {
   bool ret;
@@ -414,6 +424,12 @@ void BaseChannel::OnMessage(talk_base::Message *pmsg) {
     case MSG_UNMUTE:
       UnmuteMedia_w();
       break;
+
+    case MSG_SETRTCPCNAME: {
+      SetRtcpCNameData* data = static_cast<SetRtcpCNameData*>(pmsg->pdata);
+      data->result = SetRtcpCName_w(data->cname);
+      break;
+    }
 
     case MSG_SETLOCALDESCRIPTION: {
       SetDescriptionData* data = static_cast<SetDescriptionData*>(pmsg->pdata);

@@ -185,6 +185,13 @@ class BaseSession : public sigslot::has_slots<>,
   // Returns the JID of the other peer in this session.
   const std::string &remote_name() const { return remote_name_; }
 
+  // Set the JID of the other peer in this session.
+  // Typically the remote_name_ is set when the session is initiated.
+  // However, sometimes (e.g when a proxy is used) the peer name is
+  // known after the BaseSession has been initiated and it must be updated
+  // explicitly.
+  void set_remote_name(const std::string& name) { remote_name_ = name; }
+
   // Holds the ID of this session, which should be unique across the world.
   const SessionID& id() const { return id_; }
 
@@ -200,6 +207,7 @@ class BaseSession : public sigslot::has_slots<>,
   // cascading effect that requires an enormous number places to
   // change to buzz::Jid as well.
   std::string name_;
+
   std::string remote_name_;
   talk_base::Thread *signaling_thread_;
 };

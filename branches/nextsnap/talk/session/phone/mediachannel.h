@@ -81,6 +81,8 @@ class MediaChannel : public sigslot::has_slots<> {
   virtual void OnRtcpReceived(const void *data, int len) = 0;
   // Sets the SSRC to be used for outgoing data.
   virtual void SetSendSsrc(uint32 id) = 0;
+  // Set the CNAME of RTCP
+  virtual bool SetRtcpCName(const std::string& cname) = 0;
   // Mutes the channel.
   virtual bool Mute(bool on) = 0;
 

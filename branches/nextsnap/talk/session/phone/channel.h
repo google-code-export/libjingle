@@ -28,6 +28,7 @@
 #ifndef TALK_SESSION_PHONE_CHANNEL_H_
 #define TALK_SESSION_PHONE_CHANNEL_H_
 
+#include <string>
 #include <vector>
 
 #include "talk/base/asyncudpsocket.h"
@@ -63,7 +64,8 @@ enum {
   MSG_PLAYRINGBACKTONE = 14,
   MSG_SETMAXSENDBANDWIDTH = 15,
   MSG_ADDSCREENCAST = 16,
-  MSG_REMOVESCREENCAST = 17
+  MSG_REMOVESCREENCAST = 17,
+  MSG_SETRTCPCNAME = 18
 };
 
 // TODO(juberti): Move to own file.
@@ -115,6 +117,7 @@ class BaseChannel
   bool secure() const { return srtp_filter_.IsActive(); }
 
   // Channel control
+  bool SetRtcpCName(const std::string& cname);
   bool SetLocalDescription(const MediaSessionDescription& desc,
                            DescriptionType type);
   bool SetRemoteDescription(const MediaSessionDescription& desc,
@@ -178,6 +181,15 @@ class BaseChannel
   virtual void RemoveStream_w(uint32 ssrc) = 0;
 
   virtual void ChangeState() = 0;
+
+  struct SetRtcpCNameData : public talk_base::MessageData {
+    explicit SetRtcpCNameData(const std::string& cname)
+        : cname(cname), result(false) {}
+    std::string cname;
+    bool result;
+  };
+  bool SetRtcpCName_w(const std::string& cname);
+
   struct SetDescriptionData : public talk_base::MessageData {
     SetDescriptionData(const MediaSessionDescription& desc,
                        DescriptionType type)

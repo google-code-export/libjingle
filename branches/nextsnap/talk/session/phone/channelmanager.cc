@@ -492,8 +492,22 @@ bool ChannelManager::SetVideoOptions(const std::string& cam_name) {
 
   // If we're running, tell the media engine about it.
   if (ret && initialized_) {
-    VideoOptions options(&device);
-    ret = (Send(MSG_SETVIDEOOPTIONS, &options) && options.result);
+#ifdef OSX
+    // Defer SequenceGrabber queries until call time as they can spin up the
+    // high power GPU.  Can remove once LMI moves to QTKit enumeration.
+    Device sg_device;
+    ret = device_manager_->QtKitToSgDevice(device.name, &sg_device);
+    if (ret) {
+      device = sg_device;
+    } else {
+      LOG(LS_ERROR) << "Unable to find SG Component for qtkit device "
+                    << device.name;
+    }
+#endif
+    if (ret) {
+      VideoOptions options(&device);
+      ret = (Send(MSG_SETVIDEOOPTIONS, &options) && options.result);
+    }
   }
 
   // If everything worked, retain the name of the selected camera.
