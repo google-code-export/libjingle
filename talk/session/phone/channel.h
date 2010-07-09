@@ -34,7 +34,6 @@
 #include "talk/base/asyncudpsocket.h"
 #include "talk/base/network.h"
 #include "talk/base/sigslot.h"
-#include "talk/base/windowpicker.h"
 #include "talk/p2p/client/socketmonitor.h"
 #include "talk/p2p/base/session.h"
 #include "talk/session/phone/audiomonitor.h"
@@ -357,8 +356,6 @@ class VideoChannel : public BaseChannel {
 
   bool SetRenderer(uint32 ssrc, VideoRenderer* renderer);
 
-  bool AddScreencast(uint32 ssrc, talk_base::WindowId id);
-  bool RemoveScreencast(uint32 ssrc);
 
   sigslot::signal2<VideoChannel*, const std::vector<ConnectionInfo> &>
       SignalConnectionMonitor;
@@ -384,17 +381,9 @@ class VideoChannel : public BaseChannel {
     VideoRenderer* renderer;
   };
 
-  struct ScreencastMessageData : public talk_base::MessageData {
-    ScreencastMessageData(uint32 s, talk_base::WindowId id)
-        : ssrc(s), window_id(id) {}
-    uint32 ssrc;
-    talk_base::WindowId window_id;
-  };
 
   void SetRenderer_w(uint32 ssrc, VideoRenderer* renderer);
 
-  void AddScreencast_w(uint32 ssrc, talk_base::WindowId);
-  void RemoveScreencast_w(uint32 ssrc);
 
   virtual void OnMessage(talk_base::Message *pmsg);
   virtual void OnConnectionMonitorUpdate(
