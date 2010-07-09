@@ -59,6 +59,7 @@ void TransportChannelProxy::SetImplementation(TransportChannelImpl* impl) {
 }
 
 int TransportChannelProxy::SendPacket(const char *data, size_t len) {
+  // Fail if we don't have an impl yet.
   return (impl_) ? impl_->SendPacket(data, len) : -1;
 }
 
@@ -84,8 +85,8 @@ void TransportChannelProxy::OnWritableState(TransportChannel* channel) {
   set_writable(impl_->writable());
 }
 
-void TransportChannelProxy::OnReadPacket(
-    TransportChannel* channel, const char* data, size_t size) {
+void TransportChannelProxy::OnReadPacket(TransportChannel* channel,
+                                         const char* data, size_t size) {
   ASSERT(channel == impl_);
   SignalReadPacket(this, data, size);
 }

@@ -26,7 +26,10 @@
  */
 
 #include "talk/p2p/base/sessionmanager.h"
+
+#include <vector>
 #include "talk/p2p/base/session.h"
+#include "talk/p2p/base/sessionmessages.h"
 #include "talk/base/common.h"
 #include "talk/base/helpers.h"
 #include "talk/p2p/base/constants.h"
@@ -51,7 +54,7 @@ SessionManager::~SessionManager() {
   // Note: Session::Terminate occurs asynchronously, so it's too late to
   // delete them now.  They better be all gone.
   ASSERT(session_map_.empty());
-  //TerminateAll();
+  // TerminateAll();
 }
 
 void SessionManager::AddClient(const std::string& session_type,
@@ -122,91 +125,62 @@ void SessionManager::TerminateAll() {
 }
 
 bool SessionManager::IsSessionMessage(const buzz::XmlElement* stanza) {
-  if (stanza->Name() != buzz::QN_IQ)
-    return false;
-  if (!stanza->HasAttr(buzz::QN_TYPE))
-    return false;
-  if (stanza->Attr(buzz::QN_TYPE) != buzz::STR_SET)
-    return false;
-
-  const buzz::XmlElement* session = stanza->FirstNamed(QN_SESSION);
-  if (!session)
-    return false;
-  if (!session->HasAttr(buzz::QN_TYPE))
-    return false;
-  if (!session->HasAttr(buzz::QN_ID) || !session->HasAttr(QN_INITIATOR))
-    return false;
-
-  return true;
+  return cricket::IsSessionMessage(stanza);
 }
 
-Session* SessionManager::FindSessionForStanza(const buzz::XmlElement* stanza,
-                                              bool incoming) {
-  const buzz::XmlElement* session_xml = stanza->FirstNamed(QN_SESSION);
-  ASSERT(session_xml != NULL);
-
-  SessionID id;
-  id.set_id_str(session_xml->Attr(buzz::QN_ID));
-  id.set_initiator(session_xml->Attr(QN_INITIATOR));
-
-  // Pass this message to the session in question.
-  SessionMap::iterator iter = session_map_.find(id);
+Session* SessionManager::FindSession(const std::string& sid,
+                                     const std::string& initiator,
+                                     const std::string& remote_name) {
+  SessionMap::iterator iter = session_map_.find(SessionID(initiator, sid));
   if (iter == session_map_.end())
     return NULL;
 
   Session* session = iter->second;
+  if (buzz::Jid(remote_name) != buzz::Jid(session->remote_name()))
+    return NULL;
 
-  // match on "from"? or "to"?
-  buzz::QName attr = buzz::QN_TO;
-  if (incoming) {
-    attr = buzz::QN_FROM;
-  }
-  buzz::Jid remote(session->remote_name());
-  buzz::Jid match(stanza->Attr(attr));
-  if (remote == match) {
-    return session;
-  }
-  return NULL;
+  return session;
 }
 
 void SessionManager::OnIncomingMessage(const buzz::XmlElement* stanza) {
-  ASSERT(stanza->Attr(buzz::QN_TYPE) == buzz::STR_SET);
+  SessionMessage msg;
+  ParseError error;
 
-  Session* session = FindSessionForStanza(stanza, true);
+  if (!ParseSessionMessage(stanza, &msg, &error)) {
+    SendErrorMessage(stanza, buzz::QN_STANZA_BAD_REQUEST, "modify",
+                     error.text, NULL);
+    return;
+  }
+
+  Session* session = FindSession(msg.sid, msg.initiator, msg.from);
   if (session) {
-    session->OnIncomingMessage(stanza);
+    session->OnIncomingMessage(msg);
     return;
   }
 
-  const buzz::XmlElement* session_xml = stanza->FirstNamed(QN_SESSION);
-  ASSERT(session_xml != NULL);
-  if (session_xml->Attr(buzz::QN_TYPE) == "initiate") {
-    std::string session_type = FindClient(session_xml);
-    if (session_type.size() == 0) {
-      SendErrorMessage(stanza, buzz::QN_STANZA_BAD_REQUEST, "modify",
-                       "unknown session description type", NULL);
-    } else {
-      SessionID id;
-      id.set_id_str(session_xml->Attr(buzz::QN_ID));
-      id.set_initiator(session_xml->Attr(QN_INITIATOR));
-
-      session = CreateSession(stanza->Attr(buzz::QN_TO),
-                              id,
-                              session_type,  true);
-      session->OnIncomingMessage(stanza);
-
-      // If we haven't rejected, and we haven't selected a transport yet,
-      // let's do it now.
-      if ((session->state() != Session::STATE_SENTREJECT) &&
-          (session->transport() == NULL)) {
-        session->ChooseTransport(stanza);
-      }
-    }
+  if (msg.type != ACTION_SESSION_INITIATE) {
+    SendErrorMessage(stanza, buzz::QN_STANZA_BAD_REQUEST, "modify",
+                     "unknown session", NULL);
     return;
   }
 
-  SendErrorMessage(stanza, buzz::QN_STANZA_BAD_REQUEST, "modify",
-                  "unknown session", NULL);
+  std::string format_name;
+  if (!ParseFormatName(msg.action_elem, &format_name, &error)) {
+    SendErrorMessage(stanza, buzz::QN_STANZA_BAD_REQUEST, "modify",
+                     error.text, NULL);
+    return;
+  }
+
+  if (!GetClient(format_name)) {
+    SendErrorMessage(stanza, buzz::QN_STANZA_BAD_REQUEST, "modify",
+                     "unknown session description type", NULL);
+    return;
+  }
+
+  session = CreateSession(msg.to,
+                          SessionID(msg.initiator, msg.sid),
+                          format_name, true);
+  session->OnIncomingMessage(msg);
 }
 
 void SessionManager::OnIncomingResponse(const buzz::XmlElement* orig_stanza,
@@ -218,7 +192,13 @@ void SessionManager::OnIncomingResponse(const buzz::XmlElement* orig_stanza,
 
 void SessionManager::OnFailedSend(const buzz::XmlElement* orig_stanza,
                                   const buzz::XmlElement* error_stanza) {
-  Session* session = FindSessionForStanza(orig_stanza, false);
+  SessionMessage msg;
+  ParseError error;
+  if (!ParseSessionMessage(orig_stanza, &msg, &error)) {
+    return;  // TODO(pthatcher): log somewhere?
+  }
+
+  Session* session = FindSession(msg.sid, msg.initiator, msg.to);
   if (session) {
     talk_base::scoped_ptr<buzz::XmlElement> synthetic_error;
     if (!error_stanza) {
@@ -234,19 +214,6 @@ void SessionManager::OnFailedSend(const buzz::XmlElement* orig_stanza,
   }
 }
 
-std::string SessionManager::FindClient(const buzz::XmlElement* session) {
-  for (const buzz::XmlElement* elem = session->FirstElement();
-       elem != NULL;
-       elem = elem->NextElement()) {
-    if (elem->Name().LocalPart() == "description") {
-      ClientMap::iterator iter = client_map_.find(elem->Name().Namespace());
-      if (iter != client_map_.end())
-        return iter->first;
-    }
-  }
-  return "";
-}
-
 void SessionManager::SendErrorMessage(const buzz::XmlElement* stanza,
                                       const buzz::QName& name,
                                       const std::string& type,
@@ -254,7 +221,7 @@ void SessionManager::SendErrorMessage(const buzz::XmlElement* stanza,
                                       const buzz::XmlElement* extra_info) {
   talk_base::scoped_ptr<buzz::XmlElement> msg(
       CreateErrorMessage(stanza, name, type, text, extra_info));
-  SignalOutgoingMessage(msg.get());
+  SignalOutgoingMessage(this, msg.get());
 }
 
 buzz::XmlElement* SessionManager::CreateErrorMessage(
@@ -305,7 +272,7 @@ buzz::XmlElement* SessionManager::CreateErrorMessage(
 
 void SessionManager::OnOutgoingMessage(Session* session,
                                        const buzz::XmlElement* stanza) {
-  SignalOutgoingMessage(stanza);
+  SignalOutgoingMessage(this, stanza);
 }
 
 void SessionManager::OnErrorMessage(BaseSession* session,
@@ -329,4 +296,4 @@ void SessionManager::OnRequestSignaling(Session* session) {
   SignalRequestSignaling();
 }
 
-} // namespace cricket
+}  // namespace cricket

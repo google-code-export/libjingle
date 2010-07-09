@@ -25,8 +25,8 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _CRICKET_P2P_BASE_SESSIONCLIENT_H_
-#define _CRICKET_P2P_BASE_SESSIONCLIENT_H_
+#ifndef TALK_P2P_BASE_SESSIONCLIENT_H_
+#define TALK_P2P_BASE_SESSIONCLIENT_H_
 
 namespace buzz {
 class XmlElement;
@@ -37,11 +37,36 @@ namespace cricket {
 class Session;
 class SessionDescription;
 
+// TODO(pthatcher): For Jingle migration, we're calling what was
+// previously "SessionDescription" now "FormatDescription", since we can
+// have multiple contents.  But for backwards compatibility of the
+// code, we keep the SessionDescription name around.  When we're ready
+// to break backwards compatibilty or make a nicer API for
+// SessionClients, we should remove the SessionDescription name
+// entirely.
+typedef SessionDescription FormatDescription;
+
+class FormatParser {
+ public:
+  // TODO(pthatcher): We decided "bool Parse(in, out*, error*)" was
+  // generally the best parse signature for parsing.  However, in
+  // order to keep backwards compatibility with exisisting
+  // SessionClients, we are keeping the signatures like "out
+  // Parse(in)".  Someday when we're willing to break backwards
+  // compatibility, we should change this.
+  virtual const FormatDescription* ParseFormat(
+      const buzz::XmlElement* element) = 0;
+  virtual buzz::XmlElement* WriteFormat(
+      const FormatDescription* format) = 0;
+
+  virtual ~FormatParser() {}
+};
+
 // A SessionClient exists in 1-1 relation with each session.  The implementor
 // of this interface is the one that understands *what* the two sides are
 // trying to send to one another.  The lower-level layers only know how to send
 // data; they do not know what is being sent.
-class SessionClient {
+class SessionClient : public FormatParser {
  public:
   // Notifies the client of the creation / destruction of sessions of this type.
   //
@@ -53,19 +78,26 @@ class SessionClient {
   virtual void OnSessionCreate(Session* session, bool received_initiate) = 0;
   virtual void OnSessionDestroy(Session* session) = 0;
 
-  // Provides functions to convert between the XML description of the session
-  // and the data structures useful to the client.  The resulting objects are
-  // held by the Session for easy access.
+  // For backwards compability.  Old ones work with Create/Translate.
+  // In the future, use Parse/Write
   virtual const SessionDescription* CreateSessionDescription(
-      const buzz::XmlElement* element) = 0;
+      const buzz::XmlElement* element) {return NULL;}
   virtual buzz::XmlElement* TranslateSessionDescription(
-      const SessionDescription* description) = 0;
+      const SessionDescription* description) {return NULL;}
+  virtual const FormatDescription* ParseFormat(
+      const buzz::XmlElement* element) {
+    return CreateSessionDescription(element);
+  }
+  virtual buzz::XmlElement* WriteFormat(
+      const FormatDescription* format) {
+    return TranslateSessionDescription(format);
+  }
 
-protected:
+ protected:
   // The SessionClient interface explicitly does not include destructor
   virtual ~SessionClient() { }
 };
 
 }  // namespace cricket
 
-#endif // _CRICKET_P2P_BASE_SESSIONCLIENT_H_
+#endif  // TALK_P2P_BASE_SESSIONCLIENT_H_

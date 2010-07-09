@@ -27,11 +27,10 @@
 
 #include "talk/session/phone/mediasessionclient.h"
 
-#include <stdlib.h>
-
 #include "talk/base/logging.h"
 #include "talk/base/stringutils.h"
 #include "talk/p2p/base/constants.h"
+#include "talk/p2p/base/parsing.h"
 #include "talk/xmpp/constants.h"
 #include "talk/xmllite/qname.h"
 
@@ -58,8 +57,8 @@ MediaSessionClient::MediaSessionClient(
 
 void MediaSessionClient::Construct() {
   // Register ourselves as the handler of phone and video sessions.
-  session_manager_->AddClient(NS_GOOGLE_PHONE, this);
-  session_manager_->AddClient(NS_GOOGLE_VIDEO, this);
+  session_manager_->AddClient(NS_GINGLE_AUDIO, this);
+  session_manager_->AddClient(NS_GINGLE_VIDEO, this);
   // Forward device notifications.
   SignalDevicesChange.repeat(channel_manager_->SignalDevicesChange);
 }
@@ -76,8 +75,8 @@ MediaSessionClient::~MediaSessionClient() {
   delete channel_manager_;
 
   // Remove ourselves from the client map.
-  session_manager_->RemoveClient(NS_GOOGLE_VIDEO);
-  session_manager_->RemoveClient(NS_GOOGLE_PHONE);
+  session_manager_->RemoveClient(NS_GINGLE_VIDEO);
+  session_manager_->RemoveClient(NS_GINGLE_AUDIO);
 }
 
 MediaSessionDescription* MediaSessionClient::CreateOfferSessionDescription(
@@ -133,153 +132,6 @@ MediaSessionDescription* MediaSessionClient::CreateAcceptSessionDescription(
   return accept_desc;
 }
 
-const SessionDescription* MediaSessionClient::CreateSessionDescription(
-    const buzz::XmlElement* element) {
-  MediaSessionDescription* session_desc = new MediaSessionDescription();
-
-  // translate audio codecs
-  const buzz::XmlElement* payload_type =
-      element->FirstNamed(QN_PHONE_PAYLOADTYPE);
-  int num_payload_types = 0;
-
-  while (payload_type) {
-    if (payload_type->HasAttr(QN_PHONE_PAYLOADTYPE_ID)) {
-      int id = GetAttr(payload_type, QN_PHONE_PAYLOADTYPE_ID, 0);
-
-      std::string name;
-      if (payload_type->HasAttr(QN_PHONE_PAYLOADTYPE_NAME))
-        name = payload_type->Attr(QN_PHONE_PAYLOADTYPE_NAME);
-
-      int clockrate = GetAttr(payload_type, QN_PHONE_PAYLOADTYPE_RATE, 0);
-      int bitrate = GetAttr(payload_type, QN_PHONE_PAYLOADTYPE_BITRATE, 0);
-      int channels = GetAttr(payload_type, QN_PHONE_PAYLOADTYPE_CHANNELS, 1);
-
-      session_desc->voice().AddCodec(
-          Codec(id, name, clockrate, bitrate, channels, 0));
-    }
-
-    payload_type = payload_type->NextNamed(QN_PHONE_PAYLOADTYPE);
-    num_payload_types++;
-  }
-
-  // For backward compatibility, we can assume the other client is (an old
-  // version of Talk) if it has no audio payload types at all.
-  if (num_payload_types == 0) {
-    session_desc->voice().AddCodec(Codec(103, "ISAC", 16000, -1, 1, 1));
-    session_desc->voice().AddCodec(Codec(0, "PCMU", 8000, 64000, 1, 0));
-  }
-
-  // translate video codecs
-  payload_type = element->FirstNamed(QN_VIDEO_PAYLOADTYPE);
-  while (payload_type) {
-    if (payload_type->HasAttr(QN_VIDEO_PAYLOADTYPE_ID)) {
-      int id = GetAttr(payload_type, QN_VIDEO_PAYLOADTYPE_ID, 0);
-
-      std::string name;
-      if (payload_type->HasAttr(QN_VIDEO_PAYLOADTYPE_NAME))
-        name = payload_type->Attr(QN_VIDEO_PAYLOADTYPE_NAME);
-
-      int width = GetAttr(payload_type, QN_VIDEO_PAYLOADTYPE_WIDTH, 0);
-      int height = GetAttr(payload_type, QN_VIDEO_PAYLOADTYPE_HEIGHT, 0);
-      int framerate = GetAttr(payload_type, QN_VIDEO_PAYLOADTYPE_FRAMERATE, 0);
-
-      session_desc->video().AddCodec(
-          VideoCodec(id, name, width, height, framerate, 0));
-    }
-
-    payload_type = payload_type->NextNamed(QN_VIDEO_PAYLOADTYPE);
-  }
-
-  // get ssrcs, if present
-  const buzz::XmlElement* src_id;
-  src_id = element->FirstNamed(QN_PHONE_SRCID);
-  if (src_id) {
-    session_desc->voice().set_ssrc(strtoul(src_id->BodyText().c_str(),
-        NULL, 10));
-  }
-  src_id = element->FirstNamed(QN_VIDEO_SRCID);
-  if (src_id) {
-    session_desc->video().set_ssrc(strtoul(src_id->BodyText().c_str(),
-        NULL, 10));
-  }
-
-  return session_desc;
-}
-
-static void SetBodyUint(buzz::XmlElement* elem, uint32 u) {
-  char buf[16];
-  sprintfn(buf, sizeof(buf), "%u", u);
-  elem->SetBodyText(buf);
-}
-
-buzz::XmlElement* MediaSessionClient::TranslateSessionDescription(
-    const SessionDescription* _session_desc) {
-  const MediaSessionDescription* session_desc =
-      static_cast<const MediaSessionDescription*>(_session_desc);
-
-  bool video = !session_desc->video().codecs().empty();
-  buzz::XmlElement* description =
-      new buzz::XmlElement(video ?
-          QN_VIDEO_DESCRIPTION : QN_PHONE_DESCRIPTION, true);
-
-
-  // add audio codecs
-  for (size_t i = 0; i < session_desc->voice().codecs().size(); ++i) {
-    const Codec& codec(session_desc->voice().codecs()[i]);
-    buzz::XmlElement* payload_type =
-        new buzz::XmlElement(QN_PHONE_PAYLOADTYPE, true);
-
-    AddAttr(payload_type, QN_PHONE_PAYLOADTYPE_ID, codec.id);
-    payload_type->AddAttr(QN_PHONE_PAYLOADTYPE_NAME, codec.name);
-    if (codec.clockrate > 0) {
-      AddAttr(payload_type, QN_PHONE_PAYLOADTYPE_RATE, codec.clockrate);
-    }
-    if (codec.bitrate > 0) {
-      AddAttr(payload_type, QN_PHONE_PAYLOADTYPE_BITRATE, codec.bitrate);
-    }
-    if (codec.channels > 1) {
-      AddAttr(payload_type, QN_PHONE_PAYLOADTYPE_CHANNELS, codec.channels);
-    }
-
-    description->AddElement(payload_type);
-  }
-
-  // add video codecs, if there are any
-  if (video) {
-    for (size_t i = 0; i < session_desc->video().codecs().size(); ++i) {
-      const VideoCodec& codec(session_desc->video().codecs()[i]);
-      buzz::XmlElement* payload_type =
-          new buzz::XmlElement(QN_VIDEO_PAYLOADTYPE, true);
-
-      AddAttr(payload_type, QN_VIDEO_PAYLOADTYPE_ID, codec.id);
-      payload_type->AddAttr(QN_VIDEO_PAYLOADTYPE_NAME, codec.name);
-      AddAttr(payload_type, QN_VIDEO_PAYLOADTYPE_WIDTH, codec.width);
-      AddAttr(payload_type, QN_VIDEO_PAYLOADTYPE_HEIGHT, codec.height);
-      AddAttr(payload_type, QN_VIDEO_PAYLOADTYPE_FRAMERATE, codec.framerate);
-
-      description->AddElement(payload_type);
-    }
-  }
-
-  // add ssrcs, if set
-  if (session_desc->voice().ssrc_set()) {
-    buzz::XmlElement* src_id = new buzz::XmlElement(QN_PHONE_SRCID, true);
-    if (session_desc->voice().ssrc()) {
-      SetBodyUint(src_id, session_desc->voice().ssrc());
-    }
-    description->AddElement(src_id);
-  }
-  if (video && session_desc->video().ssrc_set()) {
-    buzz::XmlElement* src_id = new buzz::XmlElement(QN_VIDEO_SRCID, true);
-    if (session_desc->video().ssrc()) {
-      SetBodyUint(src_id, session_desc->video().ssrc());
-    }
-    description->AddElement(src_id);
-  }
-
-  return description;
-}
-
 Call *MediaSessionClient::CreateCall(bool video, bool mux) {
   Call *call = new Call(this, video, mux);
   calls_[call->id()] = call;
@@ -292,7 +144,7 @@ void MediaSessionClient::OnSessionCreate(Session *session,
   if (received_initiate) {
     session->SignalState.connect(this, &MediaSessionClient::OnSessionState);
 
-    Call *call = CreateCall(session->session_type() == NS_GOOGLE_VIDEO);
+    Call *call = CreateCall(session->session_type() == NS_GINGLE_VIDEO);
     session_map_[session->id()] = call;
     call->AddSession(session);
   }
@@ -367,23 +219,153 @@ void MediaSessionClient::JoinCalls(Call *call_to_join, Call *call) {
 }
 
 Session *MediaSessionClient::CreateSession(Call *call) {
-  const std::string& type = call->video() ? NS_GOOGLE_VIDEO : NS_GOOGLE_PHONE;
+  const std::string& type = call->video() ? NS_GINGLE_VIDEO : NS_GINGLE_AUDIO;
   Session *session = session_manager_->CreateSession(jid().Str(), type);
   session_map_[session->id()] = call;
   return session;
 }
 
-int MediaSessionClient::GetAttr(const buzz::XmlElement* elem,
-                                const buzz::QName& name, int def) {
-  std::string val = elem->Attr(name);
-  return (!val.empty()) ? atoi(val.c_str()) : def;
+bool MediaSessionClient::ParseAudioCodec(const buzz::XmlElement* element,
+                                         Codec* out) {
+  int id = GetXmlAttr(element, QN_ID, -1);
+  if (id < 0)
+    return false;
+
+  std::string name = GetXmlAttr(element, QN_NAME, buzz::STR_EMPTY);
+  int clockrate = GetXmlAttr(element, QN_CLOCKRATE, 0);
+  int bitrate = GetXmlAttr(element, QN_BITRATE, 0);
+  int channels = GetXmlAttr(element, QN_CHANNELS, 1);
+  *out = Codec(id, name, clockrate, bitrate, channels, 0);
+  return true;
 }
 
-void MediaSessionClient::AddAttr(buzz::XmlElement* elem,
-                                 const buzz::QName& name, int n) {
-  char buf[32];
-  sprintfn(buf, sizeof(buf), "%d", n);
-  elem->AddAttr(name, buf);
+bool MediaSessionClient::ParseVideoCodec(const buzz::XmlElement* element,
+                                         VideoCodec* out) {
+  int id = GetXmlAttr(element, QN_ID, -1);
+  if (id < 0)
+    return false;
+
+  std::string name = GetXmlAttr(element, QN_NAME, buzz::STR_EMPTY);
+  int width = GetXmlAttr(element, QN_WIDTH, 0);
+  int height = GetXmlAttr(element, QN_HEIGHT, 0);
+  int framerate = GetXmlAttr(element, QN_FRAMERATE, 0);
+  *out = VideoCodec(id, name, width, height, framerate, 0);
+  return true;
 }
 
+const FormatDescription* MediaSessionClient::ParseFormat(
+    const buzz::XmlElement* element) {
+  MediaSessionDescription* media = new MediaSessionDescription();
+  // Includes payloads of unknown type (xmlns).  We need to know they
+  // are there so that we don't auto-add old codecs unless there are
+  // really no payload types, even of unknown type.
+  bool has_payload_types = false;
+  for (const buzz::XmlElement* payload_type = element->FirstElement();
+       payload_type != NULL;
+       payload_type = payload_type->NextElement()) {
+    has_payload_types = true;
+    const std::string& name = payload_type->Name().LocalPart();
+    if (name == QN_GINGLE_AUDIO_PAYLOADTYPE.LocalPart() ||
+        name == QN_GINGLE_VIDEO_PAYLOADTYPE.LocalPart()) {
+      if (payload_type->Name() == QN_GINGLE_AUDIO_PAYLOADTYPE) {
+        Codec acodec;
+        if (ParseAudioCodec(payload_type, &acodec)) {
+          media->voice().AddCodec(acodec);
+        }
+      } else if (payload_type->Name() == QN_GINGLE_VIDEO_PAYLOADTYPE) {
+        VideoCodec vcodec;
+        if (ParseVideoCodec(payload_type, &vcodec)) {
+          media->video().AddCodec(vcodec);
+        }
+      }
+    }
+  }
+
+  if (!has_payload_types) {
+    // For backward compatibility, we can assume the other client is
+    // an old version of Talk if it has no audio payload types at all.
+    media->voice().AddCodec(Codec(103, "ISAC", 16000, -1, 1, 1));
+    media->voice().AddCodec(Codec(0, "PCMU", 8000, 64000, 1, 0));
+  }
+
+  // get ssrcs, if present
+  const buzz::XmlElement* src_id;
+  src_id = element->FirstNamed(QN_GINGLE_AUDIO_SRCID);
+  if (src_id) {
+    media->voice().set_ssrc(strtoul(src_id->BodyText().c_str(),
+        NULL, 10));
+  }
+  src_id = element->FirstNamed(QN_GINGLE_VIDEO_SRCID);
+  if (src_id) {
+    media->video().set_ssrc(strtoul(src_id->BodyText().c_str(),
+        NULL, 10));
+  }
+
+  return media;
 }
+
+buzz::XmlElement* WriteAudioCodec(const Codec& codec) {
+  buzz::XmlElement* payload_type =
+      new buzz::XmlElement(QN_GINGLE_AUDIO_PAYLOADTYPE, true);
+  AddXmlAttr(payload_type, QN_ID, codec.id);
+  payload_type->AddAttr(QN_NAME, codec.name);
+  if (codec.clockrate > 0)
+    AddXmlAttr(payload_type, QN_CLOCKRATE, codec.clockrate);
+  if (codec.bitrate > 0)
+    AddXmlAttr(payload_type, QN_BITRATE, codec.bitrate);
+  if (codec.channels > 1)
+    AddXmlAttr(payload_type, QN_CHANNELS, codec.channels);
+  return payload_type;
+}
+
+buzz::XmlElement* WriteVideoCodec(const VideoCodec& codec) {
+  buzz::XmlElement* payload_type =
+      new buzz::XmlElement(QN_GINGLE_VIDEO_PAYLOADTYPE, true);
+  AddXmlAttr(payload_type, QN_ID, codec.id);
+  payload_type->AddAttr(QN_NAME, codec.name);
+  AddXmlAttr(payload_type, QN_WIDTH, codec.width);
+  AddXmlAttr(payload_type, QN_HEIGHT, codec.height);
+  AddXmlAttr(payload_type, QN_FRAMERATE, codec.framerate);
+  return payload_type;
+}
+
+buzz::XmlElement* MediaSessionClient::WriteFormat(
+    const FormatDescription* untyped_format) {
+  const MediaSessionDescription* media =
+      static_cast<const MediaSessionDescription*>(untyped_format);
+
+  bool has_video_codecs = !media->video().codecs().empty();
+  buzz::XmlElement* format_elem = new buzz::XmlElement(
+      has_video_codecs ? QN_GINGLE_VIDEO_FORMAT
+                       : QN_GINGLE_AUDIO_FORMAT, true);
+
+  for (size_t i = 0; i < media->voice().codecs().size(); ++i) {
+    format_elem->AddElement(WriteAudioCodec(media->voice().codecs()[i]));
+  }
+  for (size_t i = 0; i < media->video().codecs().size(); ++i) {
+    format_elem->AddElement(WriteVideoCodec(media->video().codecs()[i]));
+  }
+
+  // Add ssrcs, if set.
+  if (media->voice().ssrc_set()) {
+    buzz::XmlElement* src_id =
+        new buzz::XmlElement(QN_GINGLE_AUDIO_SRCID, true);
+    if (media->voice().ssrc()) {
+      SetXmlBody(src_id, media->voice().ssrc());
+    }
+    format_elem->AddElement(src_id);
+  }
+  if (has_video_codecs && media->video().ssrc_set()) {
+    buzz::XmlElement* src_id =
+        new buzz::XmlElement(QN_GINGLE_VIDEO_SRCID, true);
+    if (media->video().ssrc()) {
+      SetXmlBody(src_id, media->video().ssrc());
+    }
+    format_elem->AddElement(src_id);
+  }
+
+
+  return format_elem;
+}
+
+}  // namespace cricket

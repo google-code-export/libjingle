@@ -25,26 +25,29 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _SESSIONID_H_
-#define _SESSIONID_H_
+#ifndef TALK_P2P_BASE_SESSIONID_H_
+#define TALK_P2P_BASE_SESSIONID_H_
 
-#include "talk/base/basictypes.h"
 #include <string>
 #include <sstream>
+#include "talk/base/basictypes.h"
 
 namespace cricket {
 
 // Each session is identified by a pair (from,id), where id is only
 // assumed to be unique to the machine identified by from.
 class SessionID {
-public:
+ public:
   SessionID() : id_str_("0") {
   }
   SessionID(const std::string& initiator, uint32 id)
     : initiator_(initiator) {
     set_id(id);
   }
-  SessionID(const SessionID& sid) 
+  SessionID(const std::string& initiator, const std::string& id_str)
+    : id_str_(id_str), initiator_(initiator) {
+  }
+  SessionID(const SessionID& sid)
     : id_str_(sid.id_str_), initiator_(sid.initiator_) {
   }
 
@@ -84,11 +87,11 @@ public:
     return *this;
   }
 
-private:
+ private:
   std::string id_str_;
   std::string initiator_;
 };
 
-} // namespace cricket
+}  // namespace cricket
 
-#endif // _SESSIONID_H_
+#endif  // TALK_P2P_BASE_SESSIONID_H_

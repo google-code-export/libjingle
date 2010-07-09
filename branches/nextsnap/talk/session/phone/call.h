@@ -28,6 +28,10 @@
 #ifndef TALK_SESSION_PHONE_CALL_H_
 #define TALK_SESSION_PHONE_CALL_H_
 
+#include <string>
+#include <map>
+#include <vector>
+#include <deque>
 #include "talk/base/messagequeue.h"
 #include "talk/p2p/base/session.h"
 #include "talk/p2p/client/socketmonitor.h"
@@ -36,24 +40,19 @@
 #include "talk/session/phone/voicechannel.h"
 #include "talk/session/phone/audiomonitor.h"
 
-#include <map>
-#include <vector>
-#include <deque>
 
 namespace cricket {
 
 class MediaSessionClient;
 
 class Call : public talk_base::MessageHandler, public sigslot::has_slots<> {
-public:
+ public:
   Call(MediaSessionClient *session_client,
        bool video = false, bool mux = false);
   ~Call();
 
-  Session *InitiateSession(const buzz::Jid &jid,
-                           std::vector<buzz::XmlElement*>* extra_xml);
+  Session *InitiateSession(const buzz::Jid &jid);
   void AcceptSession(BaseSession *session);
-  void RedirectSession(BaseSession *session, const buzz::Jid &to);
   void RejectSession(BaseSession *session);
   void TerminateSession(BaseSession *session);
   void Terminate();
@@ -95,7 +94,7 @@ public:
   sigslot::signal2<Call *, const std::vector<ConnectionInfo> &> SignalVideoConnectionMonitor;
   sigslot::signal2<Call *, const MediaInfo&> SignalVideoMediaMonitor;
 
-private:
+ private:
   void OnMessage(talk_base::Message *message);
   void OnSessionState(BaseSession *session, BaseSession::State state);
   void OnSessionError(BaseSession *session, Session::Error error);
@@ -105,10 +104,12 @@ private:
   void RemoveSession(Session *session);
   void EnableChannels(bool enable);
   void Join(Call *call, bool enable);
-  void OnConnectionMonitor(VoiceChannel *channel, const std::vector<ConnectionInfo> &infos);
+  void OnConnectionMonitor(VoiceChannel *channel,
+                           const std::vector<ConnectionInfo> &infos);
   void OnMediaMonitor(VoiceChannel *channel, const MediaInfo& info);
   void OnAudioMonitor(VoiceChannel *channel, const AudioInfo& info);
-  void OnConnectionMonitor(VideoChannel *channel, const std::vector<ConnectionInfo> &infos);
+  void OnConnectionMonitor(VideoChannel *channel,
+                           const std::vector<ConnectionInfo> &infos);
   void OnMediaMonitor(VideoChannel *channel, const MediaInfo& info);
   VoiceChannel* GetVoiceChannel(BaseSession* session);
   VideoChannel* GetVideoChannel(BaseSession* session);
@@ -130,4 +131,4 @@ private:
 
 }
 
-#endif // TALK_SESSION_PHONE_CALL_H_
+#endif  // TALK_SESSION_PHONE_CALL_H_

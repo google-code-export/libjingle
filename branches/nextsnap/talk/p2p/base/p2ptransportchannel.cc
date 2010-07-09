@@ -25,14 +25,12 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#if defined(_MSC_VER) && _MSC_VER < 1300
-#pragma warning(disable:4786)
-#endif
+#include "talk/p2p/base/p2ptransportchannel.h"
 
+#include <set>
 #include "talk/base/common.h"
 #include "talk/base/logging.h"
 #include "talk/p2p/base/common.h"
-#include "talk/p2p/base/p2ptransportchannel.h"
 
 namespace {
 
@@ -331,7 +329,7 @@ void P2PTransportChannel::OnUnknownAddress(
 
   Candidate new_remote_candidate = *candidate;
   new_remote_candidate.set_address(address);
-  //new_remote_candidate.set_protocol(port->protocol());
+  // new_remote_candidate.set_protocol(port->protocol());
 
   // This remote username exists. Now create connections using this candidate,
   // and resort
@@ -355,25 +353,13 @@ void P2PTransportChannel::OnUnknownAddress(
   delete stun_msg;
 }
 
-// We received a candidate from the other side, make connections so we
-// can try to use these remote candidates with our local candidates.
-void P2PTransportChannel::OnChannelMessage(const buzz::XmlElement* msg) {
+void P2PTransportChannel::OnCandidate(const Candidate& candidate) {
   ASSERT(worker_thread_ == talk_base::Thread::Current());
 
-  Candidate remote_candidate;
-  bool valid = transport_->ParseCandidate(NULL, msg, &remote_candidate);
-  ASSERT(valid);
-  LOG(LS_INFO) << "OnChannelMessage validity: " << valid;
-
   // Create connections to this remote candidate.
-  CreateConnections(remote_candidate, NULL, false);
+  CreateConnections(candidate, NULL, false);
 
   // Resort the connections list, which may have new elements.
-  SortConnections();
-}
-
-void P2PTransportChannel::OnCandidate(const Candidate& candidate) {
-  CreateConnections(candidate, NULL, false);
   SortConnections();
 }
 

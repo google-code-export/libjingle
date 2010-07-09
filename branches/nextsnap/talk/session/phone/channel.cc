@@ -510,10 +510,10 @@ bool VoiceChannel::PlayRingbackTone(bool play, bool loop) {
   return data.result;
 }
 
-bool VoiceChannel::PressDTMF(int digit) {
-  DtmfMessageData data(digit);
+bool VoiceChannel::PressDTMF(int digit, bool playout) {
+  DtmfMessageData data(digit, playout);
   Send(MSG_PRESSDTMF, &data);
-  return true;
+  return data.result;
 }
 
 void VoiceChannel::StartMediaMonitor(int cms) {
@@ -666,12 +666,12 @@ void VoiceChannel::HandleEarlyMediaTimeout() {
   }
 }
 
-bool VoiceChannel::PressDTMF_w(int digit) {
+bool VoiceChannel::PressDTMF_w(int digit, bool playout) {
   if (!enabled() || !writable()) {
     return false;
   }
 
-  return media_channel()->PressDTMF(digit);
+  return media_channel()->PressDTMF(digit, playout);
 }
 
 void VoiceChannel::OnMessage(talk_base::Message *pmsg) {
@@ -698,7 +698,7 @@ void VoiceChannel::OnMessage(talk_base::Message *pmsg) {
       break;
     case MSG_PRESSDTMF: {
       DtmfMessageData* data = static_cast<DtmfMessageData*>(pmsg->pdata);
-      PressDTMF_w(data->data());
+      data->result = PressDTMF_w(data->digit, data->playout);
       break;
     }
 
@@ -752,6 +752,18 @@ bool VideoChannel::AddStream(uint32 ssrc, uint32 voice_ssrc) {
 bool VideoChannel::SetRenderer(uint32 ssrc, VideoRenderer* renderer) {
   RenderMessageData data(ssrc, renderer);
   Send(MSG_SETRENDERER, &data);
+  return true;
+}
+
+bool VideoChannel::AddScreencast(uint32 ssrc, talk_base::WindowId id) {
+  ScreencastMessageData data(ssrc, id);
+  Send(MSG_ADDSCREENCAST, &data);
+  return true;
+}
+
+bool VideoChannel::RemoveScreencast(uint32 ssrc) {
+  ScreencastMessageData data(ssrc, 0);
+  Send(MSG_REMOVESCREENCAST, &data);
   return true;
 }
 
@@ -845,6 +857,14 @@ void VideoChannel::SetRenderer_w(uint32 ssrc, VideoRenderer* renderer) {
   media_channel()->SetRenderer(ssrc, renderer);
 }
 
+void VideoChannel::AddScreencast_w(uint32 ssrc, talk_base::WindowId id) {
+  media_channel()->AddScreencast(ssrc, id);
+}
+
+void VideoChannel::RemoveScreencast_w(uint32 ssrc) {
+  media_channel()->RemoveScreencast(ssrc);
+}
+
 void VideoChannel::OnMessage(talk_base::Message *pmsg) {
   switch (pmsg->message_id) {
     case MSG_ADDSTREAM: {
@@ -855,6 +875,18 @@ void VideoChannel::OnMessage(talk_base::Message *pmsg) {
     case MSG_SETRENDERER: {
       RenderMessageData* data = static_cast<RenderMessageData*>(pmsg->pdata);
       SetRenderer_w(data->ssrc, data->renderer);
+      break;
+    }
+    case MSG_ADDSCREENCAST: {
+      ScreencastMessageData* data =
+          static_cast<ScreencastMessageData*>(pmsg->pdata);
+      AddScreencast_w(data->ssrc, data->window_id);
+      break;
+    }
+    case MSG_REMOVESCREENCAST: {
+      ScreencastMessageData* data =
+          static_cast<ScreencastMessageData*>(pmsg->pdata);
+      RemoveScreencast_w(data->ssrc);
       break;
     }
   default:

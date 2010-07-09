@@ -27,6 +27,7 @@
 
 #include "talk/base/autodetectproxy.h"
 #include "talk/base/httpcommon.h"
+#include "talk/base/httpcommon-inl.h"
 #include "talk/base/proxydetect.h"
 
 namespace talk_base {

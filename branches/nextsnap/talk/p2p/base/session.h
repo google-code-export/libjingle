@@ -33,23 +33,39 @@
 #include <string>
 #include <vector>
 
+#include "talk/p2p/base/sessionmessages.h"
 #include "talk/p2p/base/sessionmanager.h"
 #include "talk/base/socketaddress.h"
 #include "talk/p2p/base/sessiondescription.h"
 #include "talk/p2p/base/sessionclient.h"
 #include "talk/p2p/base/sessionid.h"
+#include "talk/p2p/base/parsing.h"
 #include "talk/p2p/base/port.h"
 #include "talk/xmllite/xmlelement.h"
+#include "talk/xmpp/constants.h"
 
 class JingleMessageHandler;
 
 namespace cricket {
 
+class P2PTransportChannel;
 class Transport;
 class TransportChannel;
 class TransportChannelProxy;
 class TransportChannelImpl;
-class P2PTransportChannel;
+
+// We add "type" to the errors because it's need for
+// SignalErrorMessage.
+struct SessionError : ParseError {
+  buzz::QName type;
+
+  // if unset, assume type is a parse error
+  SessionError() : ParseError(), type(buzz::QN_STANZA_BAD_REQUEST) {}
+
+  void SetType(const buzz::QName type) {
+    this->type = type;
+  }
+};
 
 // TODO(juberti): Consider simplifying the dependency from Voice/VideoChannel
 // on Session. Right now the Channel class requires a BaseSession, but it only
@@ -156,7 +172,6 @@ class BaseSession : public sigslot::has_slots<>,
   // rejecting, or redirecting the session somewhere else.
   virtual bool Accept(const SessionDescription *description) = 0;
   virtual bool Reject() = 0;
-  virtual bool Redirect(const std::string& target) = 0;
 
   // At any time, we may terminate an outstanding session.
   virtual bool Terminate() = 0;
@@ -176,9 +191,14 @@ class BaseSession : public sigslot::has_slots<>,
  protected:
   State state_;
   Error error_;
+  // Descriptions also known as "apps".  See comment in
+  // constants.h about it.
   const SessionDescription *description_;
   const SessionDescription *remote_description_;
   SessionID id_;
+  // We don't use buzz::Jid because changing to buzz:Jid here has a
+  // cascading effect that requires an enormous number places to
+  // change to buzz::Jid as well.
   std::string name_;
   std::string remote_name_;
   talk_base::Thread *signaling_thread_;
@@ -215,7 +235,6 @@ class Session : public BaseSession {
   // initiate message when this method is invoked.  The extra_xml parameter is
   // a list of elements that will get inserted inside <Session> ... </Session>
   bool Initiate(const std::string& to,
-                std::vector<buzz::XmlElement*>* extra_xml,
                 const SessionDescription *description);
 
   // When we receive a session initiation from another client, we create a
@@ -223,7 +242,6 @@ class Session : public BaseSession {
   // rejecting, or redirecting the session somewhere else.
   virtual bool Accept(const SessionDescription *description);
   virtual bool Reject();
-  virtual bool Redirect(const std::string& target);
 
   // At any time, we may terminate an outstanding session.
   virtual bool Terminate();
@@ -231,28 +249,12 @@ class Session : public BaseSession {
   // The two clients in the session may also send one another arbitrary XML
   // messages, which are called "info" messages.  Both of these functions take
   // ownership of the XmlElements and delete them when done.
-  typedef std::vector<buzz::XmlElement*> XmlElements;
   void SendInfoMessage(const XmlElements& elems);
   sigslot::signal2<Session*, const XmlElements&> SignalInfoMessage;
 
-  // Controls the set of transports that will be allowed for this session.  If
-  // we are initiating, then this list will be used to construct the transports
-  // that we will offer to the other side.  In that case, the order of the
-  // transport names indicates our preference (first has highest preference).
-  // If we are receiving, then this list indicates the set of transports that
-  // we will allow.  We will choose the first transport in the offered list
-  // (1) whose name appears in the given list and (2) that can accept the offer
-  // provided (which may include parameters particular to the transport).
-  //
-  // If this function is not called (or if it is called with a NULL array),
-  // then we will use a default set of transports.
-  void SetPotentialTransports(const std::string names[], size_t length);
-
-  // Once transports have been created (by SetTransports), this function will
-  // return the transport with the given name or NULL if none was created.
-  // Once a particular transport has been chosen, only that transport will be
-  // returned.
-  Transport* GetTransport(const std::string& name);
+  // Maps passed to serialization functions.
+  TransportParserMap GetTransportParsers();
+  FormatParserMap GetFormatParsers();
 
   // Creates a new channel with the given name.  This method may be called
   // immediately after creating the session.  However, the actual
@@ -269,20 +271,28 @@ class Session : public BaseSession {
   virtual void OnMessage(talk_base::Message *pmsg);
 
  private:
-  typedef std::list<Transport*> TransportList;
   typedef std::map<std::string, TransportChannelProxy*> ChannelMap;
 
   SessionManager *session_manager_;
   bool initiator_;
+  // TODO(pthatcher): Support multiple session types and call them
+  // "format names".
   std::string session_type_;
   SessionClient* client_;
-  std::string redirect_target_;
-  // Note that the following two members are mutually exclusive
-  TransportList potential_transports_;  // order implies preference
-  Transport* transport_;  // negotiated transport
+  // TODO(pthatcher): reenable redirect the Jingle way
+  // std::string redirect_target_;
+
+  Transport* transport_;
+  bool transport_negotiated_;
+  // in order to resend candidates, we need to know what we sent.
+  Candidates sent_candidates_;
   ChannelMap channels_;
-  bool compatibility_mode_;  // indicates talking to an old client
-  XmlElements candidates_;  // holds candidates sent in case of compat-mode
+  // Keeps track of what protocol we are speaking.  This was
+  // previously done using "compatibility_mode_".  Now
+  // "compatibility_mode_" is when the protocol is PROTOCOL_GINGLE.
+  // But, it's no longer a binary value, since we can have
+  // PROTOCOL_JINGLE and PROTOCOL_HYBRID.
+  SignalingProtocol current_protocol_;
 
   // Creates or destroys a session.  (These are called only SessionManager.)
   Session(SessionManager *session_manager,
@@ -294,23 +304,9 @@ class Session : public BaseSession {
 
   // To improve connection time, this creates the channels on the most common
   // transport type and initiates connection.
-  void ConnectDefaultTransportChannels(bool create);
+  void ConnectDefaultTransportChannels(Transport* transport);
+  void ConnectTransportChannels(Transport* transport);
 
-  // If a new channel is created after we have created the default transport,
-  // then we should create this channel as well and let it connect.
-  void CreateDefaultTransportChannel(const std::string& name);
-
-  // Creates a default set of transports if the client did not specify some.
-  void CreateTransports();
-
-  // Attempts to choose a transport that is in both our list and the other
-  // clients.  This will examine the children of the given XML element to find
-  // the descriptions of the other client's transports.  We will pick the first
-  // transport in the other client's list that we also support.
-  // (This is called only by SessionManager.)
-  bool ChooseTransport(const buzz::XmlElement* msg);
-
-  // Called when a single transport has been negotiated.
   void SetTransport(Transport* transport);
 
   // Called when the first channel of a transport begins connecting.  We use
@@ -329,7 +325,8 @@ class Session : public BaseSession {
   // Called when a transport signals that it has a message to send.   Note that
   // these messages are just the transport part of the stanza; they need to be
   // wrapped in the appropriate session tags.
-  void OnTransportSendMessage(Transport* transport, const XmlElements& elems);
+  void OnTransportCandidatesReady(Transport* transport,
+                                  const Candidates& candidates);
 
   // Called when a transport signals that it found an error in an incoming
   // message.
@@ -351,10 +348,15 @@ class Session : public BaseSession {
   sigslot::signal1<Session*> SignalRequestSignaling;
   void OnSignalingReady();
 
-  // Sends a message of the given type to the other client.  The body will
-  // contain the given list of elements (which are consumed by the function).
-  void SendSessionMessage(const std::string& type,
-                          const XmlElements& elems);
+  // Send various kinds of session messages.
+  void SendInitiateMessage(const SessionDescription *description);
+  void SendAcceptMessage();
+  void SendRejectMessage();
+  void SendTerminateMessage();
+  void SendTransportInfoMessage(const Candidates& candidates);
+
+  // Sends a message of the given type to the other client.
+  void SendMessage(ActionType type, const XmlElements& action_elems);
 
   // Sends a message back to the other client indicating that we have received
   // and accepted their message.
@@ -365,7 +367,7 @@ class Session : public BaseSession {
   // they should be handed to OnIncomingMessage.
   // (These are called only by SessionManager.)
   sigslot::signal2<Session *, const buzz::XmlElement*> SignalOutgoingMessage;
-  void OnIncomingMessage(const buzz::XmlElement* stanza);
+  void OnIncomingMessage(const SessionMessage& msg);
 
   void OnFailedSend(const buzz::XmlElement* orig_stanza,
                     const buzz::XmlElement* error_stanza);
@@ -381,43 +383,18 @@ class Session : public BaseSession {
 
   // Handlers for the various types of messages.  These functions may take
   // pointers to the whole stanza or to just the session element.
-  bool OnInitiateMessage(const buzz::XmlElement* stanza,
-                         const buzz::XmlElement* session);
-  bool OnAcceptMessage(const buzz::XmlElement* stanza,
-                       const buzz::XmlElement* session);
-  bool OnRejectMessage(const buzz::XmlElement* stanza,
-                       const buzz::XmlElement* session);
-  bool OnRedirectMessage(const buzz::XmlElement* stanza,
-                         const buzz::XmlElement* session);
-  bool OnInfoMessage(const buzz::XmlElement* stanza,
-                     const buzz::XmlElement* session);
-  bool OnTransportAcceptMessage(const buzz::XmlElement* stanza,
-                                const buzz::XmlElement* session);
-  bool OnTransportInfoMessage(const buzz::XmlElement* stanza,
-                              const buzz::XmlElement* session);
-  bool OnTerminateMessage(const buzz::XmlElement* stanza,
-                          const buzz::XmlElement* session);
-  bool OnCandidatesMessage(const buzz::XmlElement* stanza,
-                           const buzz::XmlElement* session);
+  bool OnInitiateMessage(const SessionMessage& msg, SessionError* error);
+  bool OnAcceptMessage(const SessionMessage& msg, SessionError* error);
+  bool OnRejectMessage(const SessionMessage& msg, SessionError* error);
+  bool OnInfoMessage(const SessionMessage& msg);
+  bool OnTerminateMessage(const SessionMessage& msg, SessionError* error);
+  bool OnTransportInfoMessage(const SessionMessage& msg, SessionError* error);
 
-  // Helper functions for parsing various message types.  CheckState verifies
-  // that we are in the appropriate state to receive this message.  The latter
-  // three verify that an element has the required child or attribute.
-  bool CheckState(const buzz::XmlElement* stanza, State state);
-  bool FindRequiredElement(const buzz::XmlElement* stanza,
-                           const buzz::XmlElement* parent,
-                           const buzz::QName& name,
-                           const buzz::XmlElement** elem);
-  bool FindRemoteSessionDescription(const buzz::XmlElement* stanza,
-                                    const buzz::XmlElement* session);
-  bool FindRequiredAttribute(const buzz::XmlElement* stanza,
-                             const buzz::XmlElement* elem,
-                             const buzz::QName& name,
-                             std::string* value);
+  // Verifies that we are in the appropriate state to receive this message.
+  bool CheckState(State state, SessionError* error);
 
   friend class SessionManager;  // For access to constructor, destructor,
                                 // and signaling related methods.
-  friend class ::JingleMessageHandler;
 };
 
 }  // namespace cricket

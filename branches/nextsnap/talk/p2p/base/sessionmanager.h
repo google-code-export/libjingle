@@ -25,17 +25,17 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _SESSIONMANAGER_H_
-#define _SESSIONMANAGER_H_
+#ifndef TALK_P2P_BASE_SESSIONMANAGER_H_
+#define TALK_P2P_BASE_SESSIONMANAGER_H_
 
+#include <map>
+#include <string>
+#include <utility>
+#include <vector>
 #include "talk/base/thread.h"
 #include "talk/p2p/base/portallocator.h"
 #include "talk/p2p/base/sessionid.h"
 #include "talk/base/sigslot.h"
-
-#include <string>
-#include <utility>
-#include <map>
 
 namespace buzz {
 class QName;
@@ -52,7 +52,7 @@ class SessionClient;
 
 class SessionManager : public sigslot::has_slots<> {
  public:
-  SessionManager(PortAllocator *allocator, 
+  SessionManager(PortAllocator *allocator,
                  talk_base::Thread *worker_thread = NULL);
   virtual ~SessionManager();
 
@@ -92,8 +92,10 @@ class SessionManager : public sigslot::has_slots<> {
   // Determines whether the given stanza is intended for some session.
   bool IsSessionMessage(const buzz::XmlElement* stanza);
 
-  // Given a stanza, this find the Session associated with that stanza
-  Session* FindSessionForStanza(const buzz::XmlElement* stanza, bool incoming);
+  // Given a sid, initiator, and remote_name, this finds the matching Session
+  Session* FindSession(const std::string& sid,
+                       const std::string& initiator,
+                       const std::string& remote_name);
 
   // Called when we receive a stanza for which IsSessionMessage is true.
   void OnIncomingMessage(const buzz::XmlElement* stanza);
@@ -108,7 +110,9 @@ class SessionManager : public sigslot::has_slots<> {
                     const buzz::XmlElement* error_stanza);
 
   // Signalled each time a session generates a signaling message to send.
-  sigslot::signal1<const buzz::XmlElement*> SignalOutgoingMessage;
+  // Also signalled on errors, but with a NULL session.
+  sigslot::signal2<SessionManager*,
+                   const buzz::XmlElement*> SignalOutgoingMessage;
 
   // Signaled before sessions try to send certain signaling messages.  The
   // client should call OnSignalingReady once it is safe to send them.  These
@@ -122,7 +126,7 @@ class SessionManager : public sigslot::has_slots<> {
   void OnSignalingReady();
 
  private:
-  typedef std::map<SessionID, Session *> SessionMap;
+  typedef std::map<SessionID, Session*> SessionMap;
   typedef std::map<std::string, SessionClient*> ClientMap;
 
   PortAllocator *allocator_;
@@ -178,6 +182,6 @@ class SessionManager : public sigslot::has_slots<> {
                       const buzz::XmlElement* extra_info);
 };
 
-} // namespace cricket
+}  // namespace cricket
 
-#endif // _SESSIONMANAGER_H_
+#endif  // TALK_P2P_BASE_SESSIONMANAGER_H_

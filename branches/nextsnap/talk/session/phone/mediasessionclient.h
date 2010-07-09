@@ -28,7 +28,10 @@
 #ifndef TALK_SESSION_PHONE_MEDIASESSIONCLIENT_H_
 #define TALK_SESSION_PHONE_MEDIASESSIONCLIENT_H_
 
+#include <string>
+#include <vector>
 #include <map>
+#include <algorithm>
 #include "talk/session/phone/call.h"
 #include "talk/session/phone/channelmanager.h"
 #include "talk/session/phone/cryptoparams.h"
@@ -104,14 +107,13 @@ class MediaSessionClient: public SessionClient, public sigslot::has_slots<> {
   void OnSessionCreate(Session *session, bool received_initiate);
   void OnSessionState(BaseSession *session, BaseSession::State state);
   void OnSessionDestroy(Session *session);
-  const SessionDescription *CreateSessionDescription(
-      const buzz::XmlElement *element);
-  buzz::XmlElement *TranslateSessionDescription(
-      const SessionDescription *description);
+  virtual const FormatDescription* ParseFormat(const buzz::XmlElement* element);
+  virtual buzz::XmlElement* WriteFormat(const FormatDescription* format);
   Session *CreateSession(Call *call);
+  static bool ParseAudioCodec(const buzz::XmlElement* element, Codec* out);
+  static bool ParseVideoCodec(const buzz::XmlElement* element, VideoCodec* out);
 
-  static int GetAttr(const buzz::XmlElement* e, const buzz::QName& name, int d);
-  static void AddAttr(buzz::XmlElement* e, const buzz::QName& name, int n);
+
 
   buzz::Jid jid_;
   SessionManager* session_manager_;

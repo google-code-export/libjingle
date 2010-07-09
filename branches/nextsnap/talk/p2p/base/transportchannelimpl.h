@@ -25,8 +25,8 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _CRICKET_P2P_BASE_TRANSPORTCHANNELIMPL_H_
-#define _CRICKET_P2P_BASE_TRANSPORTCHANNELIMPL_H_
+#ifndef TALK_P2P_BASE_TRANSPORTCHANNELIMPL_H_
+#define TALK_P2P_BASE_TRANSPORTCHANNELIMPL_H_
 
 #include <string>
 #include "talk/p2p/base/transportchannel.h"
@@ -41,7 +41,7 @@ class Candidate;
 // Base class for real implementations of TransportChannel.  This includes some
 // methods called only by Transport, which do not need to be exposed to the
 // client.
-class TransportChannelImpl: public TransportChannel {
+class TransportChannelImpl : public TransportChannel {
  public:
   TransportChannelImpl(const std::string& name, const std::string& session_type)
     : TransportChannel(name, session_type) {}
@@ -61,28 +61,21 @@ class TransportChannelImpl: public TransportChannel {
   sigslot::signal0<> SignalRequestSignaling;
   virtual void OnSignalingReady() = 0;
 
-  // Handles sending and receiving of stanzas related to this particular
-  // channel.  Any channel may send whatever messages it wants.  The Transport
-  // receives all incoming messages and may forward them to the relevant
-  // channel.  The transport will delete signaled messages.
+  // Handles sending and receiving of candidates.  The Transport
+  // receives the candidates and may forward them to the relevant
+  // channel.
   //
-  // Note: Since these messages are delivered asynchronously to the channel,
-  // they cannot return an error if the message is invalid.  It is assumed that
-  // the Transport will have checked validity before forwarding.
-  virtual void OnChannelMessage(const buzz::XmlElement* msg) = 0;
+  // Note: Since candidates are delivered asynchronously to the
+  // channel, they cannot return an error if the message is invalid.
+  // It is assumed that the Transport will have checked validity
+  // before forwarding.
   sigslot::signal2<TransportChannelImpl*,
                    const Candidate&> SignalCandidateReady;
-
-  // handles sending & receiving data in non-xml form, for clients
-  // that don't use libjingle's XMPP stack
   virtual void OnCandidate(const Candidate& candidate) = 0;
-  sigslot::signal2<TransportChannelImpl*,
-                   const std::string&> SignalAvailableCandidate;
-
  private:
   DISALLOW_EVIL_CONSTRUCTORS(TransportChannelImpl);
 };
 
 }  // namespace cricket
 
-#endif  // _CRICKET_P2P_BASE_TRANSPORTCHANNELIMPL_H_
+#endif  // TALK_P2P_BASE_TRANSPORTCHANNELIMPL_H_
