@@ -771,17 +771,6 @@ bool VideoChannel::SetRenderer(uint32 ssrc, VideoRenderer* renderer) {
   return true;
 }
 
-bool VideoChannel::AddScreencast(uint32 ssrc, talk_base::WindowId id) {
-  ScreencastMessageData data(ssrc, id);
-  Send(MSG_ADDSCREENCAST, &data);
-  return true;
-}
-
-bool VideoChannel::RemoveScreencast(uint32 ssrc) {
-  ScreencastMessageData data(ssrc, 0);
-  Send(MSG_REMOVESCREENCAST, &data);
-  return true;
-}
 
 void VideoChannel::ChangeState() {
   // render incoming data if we are the active call
@@ -873,13 +862,6 @@ void VideoChannel::SetRenderer_w(uint32 ssrc, VideoRenderer* renderer) {
   media_channel()->SetRenderer(ssrc, renderer);
 }
 
-void VideoChannel::AddScreencast_w(uint32 ssrc, talk_base::WindowId id) {
-  media_channel()->AddScreencast(ssrc, id);
-}
-
-void VideoChannel::RemoveScreencast_w(uint32 ssrc) {
-  media_channel()->RemoveScreencast(ssrc);
-}
 
 void VideoChannel::OnMessage(talk_base::Message *pmsg) {
   switch (pmsg->message_id) {
@@ -891,18 +873,6 @@ void VideoChannel::OnMessage(talk_base::Message *pmsg) {
     case MSG_SETRENDERER: {
       RenderMessageData* data = static_cast<RenderMessageData*>(pmsg->pdata);
       SetRenderer_w(data->ssrc, data->renderer);
-      break;
-    }
-    case MSG_ADDSCREENCAST: {
-      ScreencastMessageData* data =
-          static_cast<ScreencastMessageData*>(pmsg->pdata);
-      AddScreencast_w(data->ssrc, data->window_id);
-      break;
-    }
-    case MSG_REMOVESCREENCAST: {
-      ScreencastMessageData* data =
-          static_cast<ScreencastMessageData*>(pmsg->pdata);
-      RemoveScreencast_w(data->ssrc);
       break;
     }
   default:

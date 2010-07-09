@@ -33,7 +33,6 @@
 #include "talk/base/basictypes.h"
 #include "talk/base/sigslot.h"
 #include "talk/base/socket.h"
-#include "talk/base/windowpicker.h"
 #include "talk/session/phone/codec.h"
 // TODO(juberti): re-evaluate this include
 #include "talk/session/phone/audiomonitor.h"
@@ -301,8 +300,6 @@ class VideoMediaChannel : public MediaChannel {
   // Sets the renderer object to be used for the specified stream.
   // If SSRC is 0, the renderer is used for the 'default' stream.
   virtual bool SetRenderer(uint32 ssrc, VideoRenderer* renderer) = 0;
-  virtual bool AddScreencast(uint32 ssrc, talk_base::WindowId id) = 0;
-  virtual bool RemoveScreencast(uint32 ssrc) = 0;
   // Gets quality stats for the channel.
   virtual bool GetStats(VideoMediaInfo* info) = 0;
  protected:
