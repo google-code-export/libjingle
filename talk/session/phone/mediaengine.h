@@ -58,9 +58,7 @@ class SoundclipMedia {
   // must be 16-bit little-endian 16 kHz PCM. If a stream is already playing
   // on this SoundclipMedia, it is stopped. If clip is NULL, nothing is played.
   // Returns whether it was successful.
-  virtual bool PlaySound(const char *clip, int len, SoundclipFlags flags) = 0;
-
-  // TODO(tschmelcher): Add method for selecting the audio device.
+  virtual bool PlaySound(const char *clip, int len, int flags) = 0;
 };
 
 // MediaEngine is an abstraction of a media engine which can be subclassed
@@ -130,6 +128,7 @@ class MediaEngine {
   virtual bool SetDefaultVideoCodec(const VideoCodec& codec) = 0;
 
   // Device selection
+  // TODO(tschmelcher): Add method for selecting the soundclip device.
   virtual bool SetSoundDevices(const Device* in_device,
                                const Device* out_device) = 0;
   virtual bool SetVideoCaptureDevice(const Device* cam_device) = 0;

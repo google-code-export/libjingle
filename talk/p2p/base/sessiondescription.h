@@ -36,10 +36,10 @@ class SessionDescription {
   virtual ~SessionDescription() {}
 };
 
-// Indicates whether a SessionDescription was an offer or an answer,
-// as described in http://www.ietf.org/rfc/rfc3264.txt. DT_UPDATE
+// Indicates whether a SessionDescription was an offer or an answer, as
+// described in http://www.ietf.org/rfc/rfc3264.txt. DT_UPDATE
 // indicates a jingle update message which contains a subset of a full
-// session description.
+// session description
 enum DescriptionType {
   DT_OFFER, DT_ANSWER, DT_UPDATE
 };
@@ -52,4 +52,4 @@ enum DescriptionSource {
 
 }  // namespace cricket
 
-#endif // TALK_P2P_BASE_SESSIONDESCRIPTION_H_
+#endif  // TALK_P2P_BASE_SESSIONDESCRIPTION_H_

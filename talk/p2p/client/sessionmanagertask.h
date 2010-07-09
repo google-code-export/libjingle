@@ -78,7 +78,8 @@ class SessionManagerTask : public buzz::XmppTask {
  private:
   SessionManager* session_manager_;
 
-  void OnOutgoingMessage(const buzz::XmlElement* stanza) {
+  void OnOutgoingMessage(SessionManager* manager,
+                         const buzz::XmlElement* stanza) {
     cricket::SessionSendTask* sender =
         new cricket::SessionSendTask(GetParent(), session_manager_);
     sender->Send(stanza);

@@ -26,6 +26,9 @@
  */
 
 #include "talk/p2p/base/rawtransportchannel.h"
+
+#include <string>
+#include <vector>
 #include "talk/base/common.h"
 #include "talk/p2p/base/constants.h"
 #include "talk/p2p/base/port.h"
@@ -62,7 +65,7 @@ RawTransportChannel::RawTransportChannel(const std::string &name,
     port_(NULL),
     use_relay_(false) {
   if (worker_thread == NULL)
-    worker_thread_ = raw_transport_->session_manager()->worker_thread();
+    worker_thread_ = raw_transport_->worker_thread();
   else
     worker_thread_ = worker_thread;
 }
@@ -122,8 +125,8 @@ void RawTransportChannel::Reset() {
   remote_address_ = talk_base::SocketAddress();
 }
 
-void RawTransportChannel::OnChannelMessage(const buzz::XmlElement* msg) {
-  VERIFY(raw_transport_->ParseAddress(NULL, msg, &remote_address_));
+void RawTransportChannel::OnCandidate(const Candidate& candidate) {
+  remote_address_ = candidate.address();
   ASSERT(!remote_address_.IsAny());
   set_readable(true);
 
@@ -132,16 +135,8 @@ void RawTransportChannel::OnChannelMessage(const buzz::XmlElement* msg) {
     SetWritable();
 }
 
-void RawTransportChannel::OnCandidate(const Candidate& candidate) {
-  remote_address_ = candidate.address();
-
-  set_readable(true);
-
-  if (port_ != NULL)
-    SetWritable();
-}
-
-void RawTransportChannel::OnRemoteAddress(const talk_base::SocketAddress& remote_address) {
+void RawTransportChannel::OnRemoteAddress(
+    const talk_base::SocketAddress& remote_address) {
   remote_address_ = remote_address;
   set_readable(true);
 
@@ -213,7 +208,7 @@ void RawTransportChannel::OnCandidatesReady(
     // to wait until one arrives.
     if (relay_port_->candidates().size() > 0)
       SetPort(relay_port_);
-#else // defined(FEATURE_ENABLE_STUN_CLASSIFICATION)
+#else  // defined(FEATURE_ENABLE_STUN_CLASSIFICATION)
     // Always use the stun port.  We don't classify right now so just assume it
     // will work fine.
     SetPort(stun_port_);
@@ -280,4 +275,4 @@ void RawTransportChannel::OnMessage(talk_base::Message* msg) {
 }
 
 }  // namespace cricket
-#endif // defined(FEATURE_ENABLE_PSTN)
+#endif  // defined(FEATURE_ENABLE_PSTN)

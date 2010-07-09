@@ -33,14 +33,13 @@
 #include "talk/base/basictypes.h"
 #include "talk/base/sigslot.h"
 #include "talk/base/socket.h"
+#include "talk/base/windowpicker.h"
 #include "talk/session/phone/codec.h"
 // TODO(juberti): re-evaluate this include
 #include "talk/session/phone/audiomonitor.h"
 
 namespace flute {
-
-class MagicCamVideoRenderer;
-
+  class MagicCamVideoRenderer;
 }
 
 namespace cricket {
@@ -99,11 +98,6 @@ enum SendFlags {
   SEND_MICROPHONE
 };
 
-// Enumeration for FOURCC pixel formats.
-enum PixelFormat {
-  FORMAT_BGRA = 0x41524742
-};
-
 // TODO(juberti): separate into VoiceMediaInfo and VideoMediaInfo
 struct MediaInfo {
   int fraction_lost;
@@ -145,7 +139,7 @@ class VoiceMediaChannel : public MediaChannel {
   // Plays or stops the aforementioned ringback tone
   virtual bool PlayRingbackTone(bool play, bool loop) = 0;
   // Sends a out-of-band DTMF signal using the specified event.
-  virtual bool PressDTMF(int event) = 0;
+  virtual bool PressDTMF(int event, bool playout) = 0;
   // Gets quality stats for the channel.
   virtual bool GetStats(VoiceMediaInfo* info) = 0;
 };
@@ -182,11 +176,11 @@ class VideoFrame {
   // nothing is written.
   virtual size_t CopyToBuffer(uint8 *buffer, size_t size) const = 0;
 
-  // Converts the I420 data to RGB of a certain type such as BGRA,
-  // RGBA etc. Returns the frame's actual size, regardless of whether
-  // it was written or not (like snprintf). Parameters size and pitch_rgb are in
-  // units of bytes. If there is insufficient space, nothing is written.
-  virtual size_t ConvertToRgbBuffer(PixelFormat type, uint8 *buffer,
+  // Converts the I420 data to RGB of a certain type such as BGRA and RGBA.
+  // Returns the frame's actual size, regardless of whether it was written or
+  // not (like snprintf). Parameters size and pitch_rgb are in units of bytes.
+  // If there is insufficient space, nothing is written.
+  virtual size_t ConvertToRgbBuffer(uint32 to_fourcc, uint8 *buffer,
                                     size_t size, size_t pitch_rgb) const = 0;
 
   // Writes the frame into the given planes, stretched to the given width and
@@ -253,7 +247,7 @@ class NullVideoFrame : public VideoFrame {
     return 0;
   }
 
-  virtual size_t ConvertToRgbBuffer(PixelFormat type, uint8 *buffer,
+  virtual size_t ConvertToRgbBuffer(uint32 to_fourcc, uint8 *buffer,
                                     size_t size, size_t pitch_rgb) const {
     return 0;
   }
@@ -305,6 +299,8 @@ class VideoMediaChannel : public MediaChannel {
   // Sets the renderer object to be used for the specified stream.
   // If SSRC is 0, the renderer is used for the 'default' stream.
   virtual bool SetRenderer(uint32 ssrc, VideoRenderer* renderer) = 0;
+  virtual bool AddScreencast(uint32 ssrc, talk_base::WindowId id) = 0;
+  virtual bool RemoveScreencast(uint32 ssrc) = 0;
   // Gets quality stats for the channel.
   virtual bool GetStats(VideoMediaInfo* info) = 0;
  protected:

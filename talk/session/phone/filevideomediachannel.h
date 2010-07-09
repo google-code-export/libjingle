@@ -68,6 +68,10 @@ class FileVideoMediaChannel : public VideoMediaChannel {
   // useful code later.
   virtual bool SetRenderer(uint32 ssrc, VideoRenderer* r) { return true; }
   virtual bool SetRender(bool render) { return true; }
+  virtual bool AddScreencast(uint32 ssrc, talk_base::WindowId id) {
+    return true;
+  }
+  virtual bool RemoveScreencast(uint32 ssrc) { return true; }
   virtual bool SetSend(bool send) { return true; }
   virtual void SetSendSsrc(uint32 id) {}
   virtual bool SetMaxSendBandwidth(int max_bandwidth) { return false; }

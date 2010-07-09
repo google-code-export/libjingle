@@ -852,8 +852,6 @@ static void ScanV4L2Devices(std::vector<Device>* devices) {
 
 static bool GetVideoDevices(std::vector<Device>* devices) {
   ScanV4L2Devices(devices);
-  LOG(LS_INFO) << "Total V4L2 devices found : " << devices->size();
-
   return true;
 }
 #endif

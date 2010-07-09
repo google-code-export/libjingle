@@ -33,6 +33,7 @@
 #include "talk/base/asyncudpsocket.h"
 #include "talk/base/network.h"
 #include "talk/base/sigslot.h"
+#include "talk/base/windowpicker.h"
 #include "talk/p2p/client/socketmonitor.h"
 #include "talk/p2p/base/session.h"
 #include "talk/session/phone/audiomonitor.h"
@@ -60,7 +61,9 @@ enum {
   MSG_REMOVESTREAM = 12,
   MSG_SETRINGBACKTONE = 13,
   MSG_PLAYRINGBACKTONE = 14,
-  MSG_SETMAXSENDBANDWIDTH = 15
+  MSG_SETMAXSENDBANDWIDTH = 15,
+  MSG_ADDSCREENCAST = 16,
+  MSG_REMOVESCREENCAST = 17
 };
 
 // TODO(juberti): Move to own file.
@@ -246,7 +249,7 @@ class VoiceChannel : public BaseChannel {
   sigslot::signal1<VoiceChannel*> SignalEarlyMediaTimeout;
 
   bool PlayRingbackTone(bool play, bool loop);
-  bool PressDTMF(int digit);
+  bool PressDTMF(int digit, bool playout);
 
   // Monitoring functions
   sigslot::signal2<VoiceChannel*, const std::vector<ConnectionInfo> &>
@@ -283,7 +286,16 @@ class VoiceChannel : public BaseChannel {
     bool loop;
     bool result;
   };
-  typedef talk_base::TypedMessageData<int> DtmfMessageData;
+  struct DtmfMessageData : public talk_base::MessageData {
+    DtmfMessageData(int d, bool p)
+        : digit(d),
+          playout(p),
+          result(false) {
+    }
+    int digit;
+    bool playout;
+    bool result;
+  };
 
   // overrides from BaseChannel
   virtual void OnChannelRead(TransportChannel* channel,
@@ -300,7 +312,7 @@ class VoiceChannel : public BaseChannel {
   void SetRingbackTone_w(const void* buf, int len);
   bool PlayRingbackTone_w(bool play, bool loop);
   void HandleEarlyMediaTimeout();
-  bool PressDTMF_w(int digit);
+  bool PressDTMF_w(int digit, bool playout);
 
   virtual void OnMessage(talk_base::Message *pmsg);
   virtual void OnConnectionMonitorUpdate(
@@ -333,6 +345,9 @@ class VideoChannel : public BaseChannel {
 
   bool SetRenderer(uint32 ssrc, VideoRenderer* renderer);
 
+  bool AddScreencast(uint32 ssrc, talk_base::WindowId id);
+  bool RemoveScreencast(uint32 ssrc);
+
   sigslot::signal2<VideoChannel*, const std::vector<ConnectionInfo> &>
       SignalConnectionMonitor;
 
@@ -356,7 +371,18 @@ class VideoChannel : public BaseChannel {
     uint32 ssrc;
     VideoRenderer* renderer;
   };
+
+  struct ScreencastMessageData : public talk_base::MessageData {
+    ScreencastMessageData(uint32 s, talk_base::WindowId id)
+        : ssrc(s), window_id(id) {}
+    uint32 ssrc;
+    talk_base::WindowId window_id;
+  };
+
   void SetRenderer_w(uint32 ssrc, VideoRenderer* renderer);
+
+  void AddScreencast_w(uint32 ssrc, talk_base::WindowId);
+  void RemoveScreencast_w(uint32 ssrc);
 
   virtual void OnMessage(talk_base::Message *pmsg);
   virtual void OnConnectionMonitorUpdate(

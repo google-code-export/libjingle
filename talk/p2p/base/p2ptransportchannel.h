@@ -37,6 +37,7 @@
 #ifndef TALK_P2P_BASE_P2PTRANSPORTCHANNEL_H_
 #define TALK_P2P_BASE_P2PTRANSPORTCHANNEL_H_
 
+#include <map>
 #include <vector>
 #include <string>
 #include "talk/base/sigslot.h"
@@ -77,7 +78,6 @@ class P2PTransportChannel : public TransportChannelImpl,
   virtual void Connect();
   virtual void Reset();
   virtual void OnSignalingReady();
-  virtual void OnChannelMessage(const buzz::XmlElement* msg);
 
   // From TransportChannel:
   virtual int SendPacket(const char *data, size_t len);
@@ -148,8 +148,9 @@ class P2PTransportChannel : public TransportChannelImpl,
   std::vector<Connection *> connections_;
   Connection *best_connection_;
   std::vector<RemoteCandidate> remote_candidates_;
-  bool pinging_started_;  // indicates whether StartGetAllCandidates has been called
-  bool sort_dirty_; // indicates whether another sort is needed right now
+  // indicates whether StartGetAllCandidates has been called
+  bool pinging_started_;
+  bool sort_dirty_;  // indicates whether another sort is needed right now
   bool was_writable_;
   bool was_timed_out_;
   typedef std::map<talk_base::Socket::Option, int> OptionMap;

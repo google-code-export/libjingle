@@ -180,9 +180,9 @@ void TunnelSessionClientBase::OnMessage(talk_base::Message* pmsg) {
     TunnelSession* tunnel = MakeTunnelSession(session, data->thread,
                                               INITIATOR);
     sessions_.push_back(tunnel);
-    SessionDescription *desc = 
+    SessionDescription *desc =
                 CreateOutgoingSessionDescription(data->jid, data->description);
-    session->Initiate(data->jid.Str(), NULL, desc);
+    session->Initiate(data->jid.Str(), desc);
     data->stream = tunnel->GetStream();
   }
 }

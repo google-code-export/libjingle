@@ -189,7 +189,7 @@ def AddMediaLibs(env, **kwargs):
   elif env.Bit('mac'):
     gips_lib = 'VoiceEngine_mac_universal_gcc'
   elif env.Bit('linux'):
-    gips_lib = 'VoiceEngine_Linux_gcc'
+    gips_lib = 'VoiceEngine_Linux_external_gcc'
 
   AddToDict(kwargs, 'libs', [
     gips_lib,

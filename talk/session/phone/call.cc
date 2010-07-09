@@ -25,6 +25,7 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <string>
 #include "talk/base/helpers.h"
 #include "talk/base/logging.h"
 #include "talk/base/thread.h"
@@ -57,8 +58,7 @@ Call::~Call() {
   talk_base::Thread::Current()->Clear(this);
 }
 
-Session *Call::InitiateSession(const buzz::Jid &jid,
-                               std::vector<buzz::XmlElement*>* extra_xml) {
+Session *Call::InitiateSession(const buzz::Jid &jid) {
   Session *session = session_client_->CreateSession(this);
   AddSession(session);
 
@@ -70,7 +70,7 @@ Session *Call::InitiateSession(const buzz::Jid &jid,
       session_desc->video().set_ssrc(0);
     }
   }
-  session->Initiate(jid.Str(), extra_xml, session_desc);
+  session->Initiate(jid.Str(), session_desc);
 
   // After this timeout, terminate the call because the callee isn't
   // answering
@@ -90,20 +90,6 @@ void Call::AcceptSession(BaseSession *session) {
     session->Accept(session_client_->CreateAcceptSessionDescription(
       session->remote_description()));
   }
-}
-
-void Call::RedirectSession(BaseSession *session, const buzz::Jid &to) {
-  std::vector<Session *>::iterator it;
-  it = std::find(sessions_.begin(), sessions_.end(), session);
-  assert(it != sessions_.end());
-  if (it != sessions_.end())
-    session->Redirect(to.Str());
-
-  session_client_->session_manager()->signaling_thread()->Clear(this,
-      MSG_TERMINATECALL);
-  session_client_->session_manager()->signaling_thread()->PostDelayed(
-    send_to_voicemail_ ? kSendToVoicemailTimeout : kNoVoicemailTimeout,
-    this, MSG_TERMINATECALL);
 }
 
 void Call::RejectSession(BaseSession *session) {

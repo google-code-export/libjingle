@@ -90,6 +90,7 @@ const char* CALL_COMMANDS =
 "  hangup  Ends the call.\n"
 "  mute    Stops sending voice.\n"
 "  unmute  Re-starts sending voice.\n"
+"  dtmf    Sends a DTMF tone.\n"
 "  quit    Quits the application.\n"
 "";
 
@@ -162,6 +163,9 @@ void CallClient::ParseLine(const std::string& line) {
       call_->Mute(true);
     } else if ((words.size() == 1) && (words[0] == "unmute")) {
       call_->Mute(false);
+    } else if ((words.size() == 2) && (words[0] == "dtmf")) {
+      int ev = std::string("0123456789*#").find(words[1][0]);
+      call_->PressDTMF(ev);
     } else {
       console_->Print(CALL_COMMANDS);
     }
@@ -519,7 +523,7 @@ void CallClient::PlaceCall(const buzz::Jid& jid, bool is_muc, bool video) {
   if (!call_) {
     call_ = media_client_->CreateCall(video, is_muc);
     console_->SetPrompt(jid.Str().c_str());
-    session_ = call_->InitiateSession(jid, NULL);
+    session_ = call_->InitiateSession(jid);
     if (is_muc) {
       // If people in this room are already in a call, must add all their
       // streams.

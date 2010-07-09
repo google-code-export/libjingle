@@ -37,10 +37,6 @@
 #include "talk/p2p/base/p2ptransport.h"
 #include "talk/p2p/base/p2ptransportchannel.h"
 
-#if defined(FEATURE_ENABLE_PSTN)
-#include "talk/p2p/base/rawtransport.h"
-#endif  // defined(FEATURE_ENABLE_PSTN)
-
 #include "talk/p2p/base/constants.h"
 
 namespace {
@@ -49,13 +45,17 @@ const uint32 MSG_TIMEOUT = 1;
 const uint32 MSG_ERROR = 2;
 const uint32 MSG_STATE = 3;
 
-// This will be initialized at run time to hold the list of default transports.
-std::string* gDefaultTransports = NULL;
-size_t gNumDefaultTransports = 0;
-
 }  // namespace
 
 namespace cricket {
+
+bool BadMessage(const buzz::QName type,
+                const std::string& text,
+                SessionError* err) {
+  err->SetType(type);
+  err->SetText(text);
+  return false;
+}
 
 BaseSession::BaseSession(talk_base::Thread *signaling_thread)
     : state_(STATE_INIT), error_(ERROR_NONE),
@@ -107,7 +107,6 @@ void BaseSession::OnMessage(talk_base::Message *pmsg) {
       break;
 
     case STATE_SENTREJECT:
-    case STATE_SENTREDIRECT:
     case STATE_RECEIVEDREJECT:
       Terminate();
       break;
@@ -135,8 +134,10 @@ Session::Session(SessionManager *session_manager, const std::string& name,
   error_ = ERROR_NONE;
   state_ = STATE_INIT;
   initiator_ = false;
-  transport_ = NULL;
-  compatibility_mode_ = false;
+  SetTransport(new P2PTransport(session_manager_->worker_thread(),
+                                session_manager_->port_allocator()));
+  transport_negotiated_ = false;
+  current_protocol_ = PROTOCOL_GINGLE2;
 }
 
 Session::~Session() {
@@ -153,17 +154,10 @@ Session::~Session() {
     delete iter->second;
   }
 
-  for (TransportList::iterator iter = potential_transports_.begin();
-       iter != potential_transports_.end();
-       ++iter) {
-    delete *iter;
-  }
-
   delete transport_;
 }
 
 bool Session::Initiate(const std::string &to,
-                       std::vector<buzz::XmlElement*>* extra_xml,
                        const SessionDescription *description) {
   ASSERT(signaling_thread_->IsCurrent());
 
@@ -176,63 +170,12 @@ bool Session::Initiate(const std::string &to,
   initiator_ = true;
   set_local_description(description);
 
-  // Make sure we have transports to negotiate.
-  CreateTransports();
-
-  // Send the initiate message, including the application and transport offers.
-  XmlElements elems;
-  elems.push_back(client_->TranslateSessionDescription(description));
-  for (TransportList::iterator iter = potential_transports_.begin();
-       iter != potential_transports_.end();
-       ++iter) {
-    buzz::XmlElement* elem = (*iter)->CreateTransportOffer();
-    elems.push_back(elem);
-  }
-
-  if (extra_xml != NULL) {
-    std::vector<buzz::XmlElement*>::iterator iter = extra_xml->begin();
-    for (std::vector<buzz::XmlElement*>::iterator iter = extra_xml->begin();
-        iter != extra_xml->end();
-        ++iter) {
-      elems.push_back(new buzz::XmlElement(**iter));
-    }
-  }
-
-  SendSessionMessage("initiate", elems);
-
+  SendInitiateMessage(description);
   SetState(Session::STATE_SENTINITIATE);
 
   // We speculatively start attempting connection of the P2P transports.
-  ConnectDefaultTransportChannels(true);
+  ConnectDefaultTransportChannels(transport_);
   return true;
-}
-
-void Session::ConnectDefaultTransportChannels(bool create) {
-  Transport* transport = GetTransport(kNsP2pTransport);
-  if (transport) {
-    for (ChannelMap::iterator iter = channels_.begin();
-         iter != channels_.end();
-         ++iter) {
-      ASSERT(create != transport->HasChannel(iter->first));
-      if (create) {
-        transport->CreateChannel(iter->first, session_type());
-      }
-    }
-    transport->ConnectChannels();
-  }
-}
-
-void Session::CreateDefaultTransportChannel(const std::string& name) {
-  // This method is only relevant when we have created the default transport
-  // but not received a transport-accept.
-  ASSERT(transport_ == NULL);
-  ASSERT(state_ == STATE_SENTINITIATE);
-
-  Transport* p2p_transport = GetTransport(kNsP2pTransport);
-  if (p2p_transport) {
-    ASSERT(!p2p_transport->HasChannel(name));
-    p2p_transport->CreateChannel(name, session_type());
-  }
 }
 
 bool Session::Accept(const SessionDescription *description) {
@@ -246,16 +189,12 @@ bool Session::Accept(const SessionDescription *description) {
   initiator_ = false;
   set_local_description(description);
 
-  // If we haven't selected a transport, wait for ChooseTransport to complete
-  if (transport_ == NULL)
+  // Wait for ChooseTransport to complete
+  if (!transport_negotiated_)
     return true;
 
-  // Send the accept message.
-  XmlElements elems;
-  elems.push_back(client_->TranslateSessionDescription(description_));
-  SendSessionMessage("accept", elems);
+  SendAcceptMessage();
   SetState(Session::STATE_SENTACCEPT);
-
   return true;
 }
 
@@ -270,43 +209,8 @@ bool Session::Reject() {
   // Setup for signaling.
   initiator_ = false;
 
-  // Send the reject message.
-  SendSessionMessage("reject", XmlElements());
+  SendRejectMessage();
   SetState(STATE_SENTREJECT);
-
-  return true;
-}
-
-bool Session::Redirect(const std::string & target) {
-  ASSERT(signaling_thread_->IsCurrent());
-
-  // Redirect is sent in response to an initiate or modify, to redirect the
-  // request
-  if (state_ != STATE_RECEIVEDINITIATE)
-    return false;
-
-  // Setup for signaling.
-  initiator_ = false;
-
-  // Send a redirect message to the given target.  We include an element that
-  // names the redirector (us), which may be useful to the other side.
-
-  buzz::XmlElement* target_elem = new buzz::XmlElement(QN_REDIRECT_TARGET);
-  target_elem->AddAttr(buzz::QN_NAME, target);
-
-  buzz::XmlElement* cookie = new buzz::XmlElement(QN_REDIRECT_COOKIE);
-  buzz::XmlElement* regarding = new buzz::XmlElement(QN_REDIRECT_REGARDING);
-  regarding->AddAttr(buzz::QN_NAME, name_);
-  cookie->AddElement(regarding);
-
-  XmlElements elems;
-  elems.push_back(target_elem);
-  elems.push_back(cookie);
-  SendSessionMessage("redirect", elems);
-
-  // A redirect puts us in the same state as reject.  It just sends a different
-  // kind of reject message, if you like.
-  SetState(STATE_SENTREDIRECT);
 
   return true;
 }
@@ -320,10 +224,6 @@ bool Session::Terminate() {
     case STATE_RECEIVEDTERMINATE:
       return false;
 
-    case STATE_SENTREDIRECT:
-      // We must not send terminate if we redirect.
-      break;
-
     case STATE_SENTREJECT:
     case STATE_RECEIVEDREJECT:
       // We don't need to send terminate if we sent or received a reject...
@@ -331,7 +231,7 @@ bool Session::Terminate() {
       break;
 
     default:
-      SendSessionMessage("terminate", XmlElements());
+      SendTerminateMessage();
       break;
   }
 
@@ -339,72 +239,81 @@ bool Session::Terminate() {
   return true;
 }
 
+// only used by app/win32/fileshare.cc
 void Session::SendInfoMessage(const XmlElements& elems) {
   ASSERT(signaling_thread_->IsCurrent());
-  SendSessionMessage("info", elems);
+  SendMessage(ACTION_SESSION_INFO, elems);
 }
 
-void Session::SetPotentialTransports(const std::string names[], size_t length) {
+void Session::SetTransport(Transport* transport) {
+  transport_ = transport;
+  transport->SignalConnecting.connect(
+      this, &Session::OnTransportConnecting);
+  transport->SignalWritableState.connect(
+      this, &Session::OnTransportWritable);
+  transport->SignalRequestSignaling.connect(
+      this, &Session::OnTransportRequestSignaling);
+  transport->SignalCandidatesReady.connect(
+      this, &Session::OnTransportCandidatesReady);
+  transport->SignalTransportError.connect(
+      this, &Session::OnTransportSendError);
+  transport->SignalChannelGone.connect(
+      this, &Session::OnTransportChannelGone);
+}
+
+void Session::ConnectDefaultTransportChannels(Transport* transport) {
+  for (ChannelMap::iterator iter = channels_.begin();
+       iter != channels_.end();
+       ++iter) {
+    ASSERT(!transport->HasChannel(iter->first));
+    transport->CreateChannel(iter->first, session_type());
+  }
+  transport->ConnectChannels();
+}
+
+void Session::ConnectTransportChannels(Transport* transport) {
   ASSERT(signaling_thread_->IsCurrent());
-  for (size_t i = 0; i < length; ++i) {
-    Transport* transport = NULL;
-    if (names[i] == kNsP2pTransport) {
-      transport = new P2PTransport(session_manager_);
-#if defined(FEATURE_ENABLE_PSTN)
-    } else if (names[i] == kNsRawTransport) {
-      transport = new RawTransport(session_manager_);
-#endif  // defined(FEATURE_ENABLE_PSTN)
-    } else {
-      ASSERT(false);
-    }
 
-    if (transport) {
-      ASSERT(transport->name() == names[i]);
-      potential_transports_.push_back(transport);
-      transport->SignalConnecting.connect(
-          this, &Session::OnTransportConnecting);
-      transport->SignalWritableState.connect(
-          this, &Session::OnTransportWritable);
-      transport->SignalRequestSignaling.connect(
-          this, &Session::OnTransportRequestSignaling);
-      transport->SignalTransportMessage.connect(
-          this, &Session::OnTransportSendMessage);
-      transport->SignalTransportError.connect(
-          this, &Session::OnTransportSendError);
-      transport->SignalChannelGone.connect(
-          this, &Session::OnTransportChannelGone);
-    }
+  // Create implementations for all of the channels if they don't exist.
+  for (ChannelMap::iterator iter = channels_.begin();
+       iter != channels_.end();
+       ++iter) {
+    TransportChannelProxy* channel = iter->second;
+    TransportChannelImpl* impl = transport->GetChannel(channel->name());
+    if (impl == NULL)
+      impl = transport->CreateChannel(channel->name(), session_type());
+    ASSERT(impl != NULL);
+    channel->SetImplementation(impl);
   }
+
+  // Have this transport start connecting if it is not already.
+  // (We speculatively connect the most common transport right away.)
+  transport->ConnectChannels();
 }
 
-Transport* Session::GetTransport(const std::string& name) {
-  if (transport_ != NULL) {
-    if (name == transport_->name())
-      return transport_;
-  } else {
-    for (TransportList::iterator iter = potential_transports_.begin();
-        iter != potential_transports_.end();
-        ++iter) {
-      if (name == (*iter)->name())
-        return *iter;
-    }
-  }
-  return NULL;
+TransportParserMap Session::GetTransportParsers() {
+  TransportParserMap parsers;
+  parsers[transport_->name()] = transport_;
+  return parsers;
+}
+
+FormatParserMap Session::GetFormatParsers() {
+  FormatParserMap parsers;
+  parsers[session_type_] = client_;
+  return parsers;
 }
 
 TransportChannel* Session::CreateChannel(const std::string& name) {
   ASSERT(channels_.find(name) == channels_.end());
+  ASSERT(!transport_->HasChannel(name));
+
   TransportChannelProxy* channel =
       new TransportChannelProxy(name, session_type_);
   channels_[name] = channel;
-  if (transport_) {
-    ASSERT(!transport_->HasChannel(name));
+  if (transport_negotiated_) {
     channel->SetImplementation(transport_->CreateChannel(name, session_type_));
   } else if (state_ == STATE_SENTINITIATE) {
-    // In this case, we have already speculatively created the default
-    // transport.  We should create this channel as well so that it may begin
-    // early connection.
-    CreateDefaultTransportChannel(name);
+    transport_->CreateChannel(name, session_type());
   }
   return channel;
 }
@@ -423,149 +332,9 @@ void Session::DestroyChannel(TransportChannel* channel) {
   delete channel;
 }
 
-void Session::CreateTransports() {
-  ASSERT(signaling_thread_->IsCurrent());
-  ASSERT((state_ == STATE_INIT)
-      || (state_ == STATE_RECEIVEDINITIATE));
-  if (potential_transports_.empty()) {
-    if (gDefaultTransports == NULL) {
-#if defined(FEATURE_ENABLE_PSTN)
-      gNumDefaultTransports = 2;
-      gDefaultTransports = new std::string[2];
-      gDefaultTransports[0] = kNsP2pTransport;
-      gDefaultTransports[1] = kNsRawTransport;
-#else  // !defined(FEATURE_ENABLE_PSTN)
-      gNumDefaultTransports = 1;
-      gDefaultTransports = new std::string[1];
-      gDefaultTransports[0] = kNsP2pTransport;
-#endif  // !defined(FEATURE_ENABLE_PSTN)
-    }
-    SetPotentialTransports(gDefaultTransports, gNumDefaultTransports);
-  }
-}
-
-bool Session::ChooseTransport(const buzz::XmlElement* stanza) {
-  ASSERT(signaling_thread_->IsCurrent());
-  ASSERT(state_ == STATE_RECEIVEDINITIATE);
-  ASSERT(transport_ == NULL);
-
-  // Make sure we have decided on our own transports.
-  CreateTransports();
-
-  // Retrieve the session message.
-  const buzz::XmlElement* session = stanza->FirstNamed(QN_SESSION);
-  ASSERT(session != NULL);
-
-  // Try the offered transports until we find one that we support.
-  bool found_offer = false;
-  const buzz::XmlElement* elem = session->FirstElement();
-  while (elem) {
-    if (elem->Name().LocalPart() == "transport") {
-      found_offer = true;
-      Transport* transport = GetTransport(elem->Name().Namespace());
-      if (transport && transport->OnTransportOffer(elem)) {
-        SetTransport(transport);
-        break;
-      }
-    }
-    elem = elem->NextElement();
-  }
-
-  // If the offer did not include any transports, then we are talking to an
-  // old client.  In that case, we turn on compatibility mode, and we assume
-  // an offer containing just P2P, which is all that old clients support.
-  if (!found_offer) {
-    compatibility_mode_ = true;
-
-    Transport* transport = GetTransport(kNsP2pTransport);
-    ASSERT(transport != NULL);
-
-    talk_base::scoped_ptr<buzz::XmlElement> transport_offer(
-        new buzz::XmlElement(kQnP2pTransport, true));
-    bool valid = transport->OnTransportOffer(transport_offer.get());
-    ASSERT(valid);
-    if (valid)
-      SetTransport(transport);
-  }
-
-  if (!transport_) {
-    SignalErrorMessage(this, stanza, buzz::QN_STANZA_NOT_ACCEPTABLE, "modify",
-                       "no supported transport in offer", NULL);
-    return false;
-  }
-
-  // Get the description of the transport we picked.
-  buzz::XmlElement* answer = transport_->CreateTransportAnswer();
-  ASSERT(answer->Name() == buzz::QName(transport_->name(), "transport"));
-
-  // Send a transport-accept message telling the other side our decision,
-  // unless this is an old client that is not expecting one.
-  if (!compatibility_mode_) {
-    XmlElements elems;
-    elems.push_back(answer);
-    SendSessionMessage("transport-accept", elems);
-  }
-
-  // If the user wants to accept, allow that now
-  if (description_) {
-    Accept(description_);
-  }
-
-  return true;
-}
-
-void Session::SetTransport(Transport* transport) {
-  ASSERT(signaling_thread_->IsCurrent());
-  ASSERT(transport_ == NULL);
-  transport_ = transport;
-
-  // Drop the transports that were not selected.
-  bool found = false;
-  for (TransportList::iterator iter = potential_transports_.begin();
-       iter != potential_transports_.end();
-       ++iter) {
-    if (*iter == transport_) {
-      found = true;
-    } else {
-      delete *iter;
-    }
-  }
-  potential_transports_.clear();
-
-  // We require the selected transport to be one of the potential transports
-  ASSERT(found);
-
-  // Create implementations for all of the channels if they don't exist.
-  for (ChannelMap::iterator iter = channels_.begin();
-       iter != channels_.end();
-       ++iter) {
-    TransportChannelProxy* channel = iter->second;
-    TransportChannelImpl* impl = transport_->GetChannel(channel->name());
-    if (impl == NULL)
-      impl = transport_->CreateChannel(channel->name(), session_type());
-    ASSERT(impl != NULL);
-    channel->SetImplementation(impl);
-  }
-
-  // Have this transport start connecting if it is not already.
-  // (We speculatively connect the most common transport right away.)
-  transport_->ConnectChannels();
-}
-
 void Session::OnSignalingReady() {
   ASSERT(signaling_thread_->IsCurrent());
-
-  // Forward this to every transport.  Those that did not request it should
-  // ignore this call.
-  if (transport_ != NULL) {
-    transport_->OnSignalingReady();
-  } else {
-    for (TransportList::iterator iter = potential_transports_.begin();
-        iter != potential_transports_.end();
-        ++iter) {
-      (*iter)->OnSignalingReady();
-    }
-  }
+  transport_->OnSignalingReady();
 }
 
 void Session::OnTransportConnecting(Transport* transport) {
@@ -576,7 +345,7 @@ void Session::OnTransportConnecting(Transport* transport) {
 
 void Session::OnTransportWritable(Transport* transport) {
   ASSERT(signaling_thread_->IsCurrent());
-  ASSERT((NULL == transport_) || (transport == transport_));
+  ASSERT(transport == transport_);
 
   // If the transport is not writable, start a timer to make sure that it
   // becomes writable within a reasonable amount of time.  If it does not, we
@@ -596,40 +365,17 @@ void Session::OnTransportRequestSignaling(Transport* transport) {
   SignalRequestSignaling(this);
 }
 
-void Session::OnTransportSendMessage(Transport* transport,
-                                     const XmlElements& elems) {
+void Session::OnTransportCandidatesReady(Transport* transport,
+                                         const Candidates& candidates) {
   ASSERT(signaling_thread_->IsCurrent());
-  for (size_t i = 0; i < elems.size(); ++i)
-    ASSERT(elems[i]->Name() == buzz::QName(transport->name(), "transport"));
-
-  if (compatibility_mode_) {
-    // In backward compatibility mode, we send a candidates message.
-    XmlElements candidates;
-    for (size_t i = 0; i < elems.size(); ++i) {
-      for (const buzz::XmlElement* elem = elems[i]->FirstElement();
-           elem != NULL;
-           elem = elem->NextElement()) {
-        ASSERT(elem->Name() == kQnP2pCandidate);
-
-        // Convert this candidate to an old style candidate (namespace change)
-        buzz::XmlElement* legacy_candidate = new buzz::XmlElement(*elem);
-        legacy_candidate->SetName(kQnLegacyCandidate);
-        candidates.push_back(legacy_candidate);
-      }
-      delete elems[i];
+  if (!transport_negotiated_) {
+    for (Candidates::const_iterator iter = candidates.begin();
+         iter != candidates.end();
+         ++iter) {
+      sent_candidates_.push_back(*iter);
     }
-
-    SendSessionMessage("candidates", candidates);
-  } else {
-    // If we haven't finished negotiation, then we may later discover that we
-    // need compatibility mode, in which case, we will need to re-send these.
-    if ((transport_ == NULL) && (transport->name() == kNsP2pTransport)) {
-      for (size_t i = 0; i < elems.size(); ++i)
-        candidates_.push_back(new buzz::XmlElement(*elems[i]));
-    }
-
-    SendSessionMessage("transport-info", elems);
   }
+  SendTransportInfoMessage(candidates);
 }
 
 void Session::OnTransportSendError(Transport* transport,
@@ -648,90 +394,74 @@ void Session::OnTransportChannelGone(Transport* transport,
   SignalChannelGone(this, name);
 }
 
-void Session::SendSessionMessage(
-    const std::string& type, const std::vector<buzz::XmlElement*>& elems) {
-  talk_base::scoped_ptr<buzz::XmlElement> iq(new buzz::XmlElement(buzz::QN_IQ));
-  iq->SetAttr(buzz::QN_TO, remote_name_);
-  iq->SetAttr(buzz::QN_TYPE, buzz::STR_SET);
-
-  buzz::XmlElement *session = new buzz::XmlElement(QN_SESSION, true);
-  session->AddAttr(buzz::QN_TYPE, type);
-  session->AddAttr(buzz::QN_ID, id_.id_str());
-  session->AddAttr(QN_INITIATOR, id_.initiator());
-
-  for (size_t i = 0; i < elems.size(); ++i)
-    session->AddElement(elems[i]);
-
-  iq->AddElement(session);
-  SignalOutgoingMessage(this, iq.get());
-}
-
-void Session::SendAcknowledgementMessage(const buzz::XmlElement* stanza) {
-  talk_base::scoped_ptr<buzz::XmlElement> ack(
-      new buzz::XmlElement(buzz::QN_IQ));
-  ack->SetAttr(buzz::QN_TO, remote_name_);
-  ack->SetAttr(buzz::QN_ID, stanza->Attr(buzz::QN_ID));
-  ack->SetAttr(buzz::QN_TYPE, "result");
-
-  SignalOutgoingMessage(this, ack.get());
-}
-
-void Session::OnIncomingMessage(const buzz::XmlElement* stanza) {
+void Session::OnIncomingMessage(const SessionMessage& msg) {
   ASSERT(signaling_thread_->IsCurrent());
-  ASSERT(stanza->Name() == buzz::QN_IQ);
-  buzz::Jid remote(remote_name_);
-  buzz::Jid from(stanza->Attr(buzz::QN_FROM));
-  ASSERT(state_ == STATE_INIT || from == remote);
+  ASSERT(state_ == STATE_INIT || msg.from == remote_name_);
 
-  const buzz::XmlElement* session = stanza->FirstNamed(QN_SESSION);
-  ASSERT(session != NULL);
-
-  if (stanza->Attr(buzz::QN_TYPE) != buzz::STR_SET) {
-    ASSERT(false);
-    return;
+  // PROTOCOL_GINGLE is effectively the old compatibility_mode_ which
+  // meant "talking to old client".  We can flip to
+  // compatibility_mode_, but not back.
+  if (msg.protocol == PROTOCOL_GINGLE) {
+    current_protocol_ = PROTOCOL_GINGLE;
   }
 
-  ASSERT(session->HasAttr(buzz::QN_TYPE));
-  std::string type = session->Attr(buzz::QN_TYPE);
+  if (msg.type == ACTION_TRANSPORT_INFO &&
+      current_protocol_ == PROTOCOL_GINGLE &&
+      !transport_negotiated_) {
+    // We have sent some already (using transport-info), and we need
+    // to re-send them using the candidates message.
+    if (sent_candidates_.size() > 0) {
+      SendTransportInfoMessage(sent_candidates_);
+    }
+    sent_candidates_.clear();
+  }
 
   bool valid = false;
-
-  if (type == "initiate") {
-    valid = OnInitiateMessage(stanza, session);
-  } else if (type == "accept") {
-    valid = OnAcceptMessage(stanza, session);
-  } else if (type == "reject") {
-    valid = OnRejectMessage(stanza, session);
-  } else if (type == "redirect") {
-    valid = OnRedirectMessage(stanza, session);
-  } else if (type == "info") {
-    valid = OnInfoMessage(stanza, session);
-  } else if (type == "transport-accept") {
-    valid = OnTransportAcceptMessage(stanza, session);
-  } else if (type == "transport-info") {
-    valid = OnTransportInfoMessage(stanza, session);
-  } else if (type == "terminate") {
-    valid = OnTerminateMessage(stanza, session);
-  } else if (type == "candidates") {
-    // This is provided for backward compatibility.
-    valid = OnCandidatesMessage(stanza, session);
-  } else {
-    SignalErrorMessage(this, stanza, buzz::QN_STANZA_BAD_REQUEST, "modify",
-                       "unknown session message type", NULL);
+  SessionError error;
+  switch (msg.type) {
+    case ACTION_SESSION_INITIATE:
+      valid = OnInitiateMessage(msg, &error);
+      break;
+    case ACTION_SESSION_INFO:
+      valid = OnInfoMessage(msg);
+      break;
+    case ACTION_SESSION_ACCEPT:
+      valid = OnAcceptMessage(msg, &error);
+      break;
+    case ACTION_SESSION_REJECT:
+      valid = OnRejectMessage(msg, &error);
+      break;
+    case ACTION_SESSION_TERMINATE:
+      valid = OnTerminateMessage(msg, &error);
+      break;
+    case ACTION_TRANSPORT_INFO:
+      valid = OnTransportInfoMessage(msg, &error);
+      break;
+    default:
+      valid = BadMessage(buzz::QN_STANZA_BAD_REQUEST,
+                         "unknown session message type",
+                         &error);
   }
 
-  // If the message was not valid, we should have sent back an error above.
-  // If it was valid, then we send an acknowledgement here.
-  if (valid)
-    SendAcknowledgementMessage(stanza);
+  if (valid) {
+    SendAcknowledgementMessage(msg.stanza);
+  } else {
+    SignalErrorMessage(this, msg.stanza, error.type,
+                       "modify", error.text, NULL);
+  }
 }
 
 void Session::OnFailedSend(const buzz::XmlElement* orig_stanza,
                            const buzz::XmlElement* error_stanza) {
   ASSERT(signaling_thread_->IsCurrent());
 
-  const buzz::XmlElement* orig_session = orig_stanza->FirstNamed(QN_SESSION);
-  ASSERT(orig_session != NULL);
+  SessionMessage msg;
+  ParseError parse_error;
+  if (!ParseSessionMessage(orig_stanza, &msg, &parse_error)) {
+    LOG(LERROR) << "Error parsing failed send: " << parse_error.text
+                << ":" << orig_stanza;
+    return;
+  }
 
   std::string error_type = "cancel";
 
@@ -742,14 +472,10 @@ void Session::OnFailedSend(const buzz::XmlElement* orig_stanza,
     error_type = error->Attr(buzz::QN_TYPE);
 
     LOG(LERROR) << "Session error:\n" << error->Str() << "\n"
-                << "in response to:\n" << orig_session->Str();
+                << "in response to:\n" << orig_stanza->Str();
   }
 
-  bool fatal_error = false;
-
-  ASSERT(orig_session->HasAttr(buzz::QN_TYPE));
-  if ((orig_session->Attr(buzz::QN_TYPE) == "transport-info")
-      || (orig_session->Attr(buzz::QN_TYPE) == "candidates")) {
+  if (msg.type == ACTION_TRANSPORT_INFO) {
     // Transport messages frequently generate errors because they are sent right
     // when we detect a network failure.  For that reason, we ignore such
     // errors, because if we do not establish writability again, we will
@@ -757,294 +483,113 @@ void Session::OnFailedSend(const buzz::XmlElement* orig_stanza,
     // which we pass on to the respective transport.
     for (const buzz::XmlElement* elem = error->FirstElement();
          NULL != elem; elem = elem->NextElement()) {
-      if (Transport* transport = GetTransport(elem->Name().Namespace())) {
-        if (!transport->OnTransportError(orig_session, elem)) {
-          fatal_error = true;
-          break;
-        }
+      if (transport_->name() == elem->Name().Namespace()) {
+        transport_->OnTransportError(elem);
       }
     }
   } else if ((error_type != "continue") && (error_type != "wait")) {
     // We do not set an error if the other side said it is okay to continue
     // (possibly after waiting).  These errors can be ignored.
-    fatal_error = true;
-  }
-
-  if (fatal_error) {
     SetError(ERROR_RESPONSE);
   }
 }
 
-bool Session::OnInitiateMessage(const buzz::XmlElement* stanza,
-                                const buzz::XmlElement* session) {
-  if (!CheckState(stanza, STATE_INIT))
-    return false;
-  if (!FindRemoteSessionDescription(stanza, session))
+bool Session::OnInitiateMessage(const SessionMessage& msg,
+                                SessionError* error) {
+  if (!CheckState(STATE_INIT, error))
     return false;
 
+  SessionInitiate init;
+  if (!ParseSessionInitiate(msg.action_elem, GetFormatParsers(), &init, error))
+    return false;
+
+  if (transport_->name() != init.transport_name)
+    return BadMessage(buzz::QN_STANZA_NOT_ACCEPTABLE,
+                      "no supported transport in offer",
+                      error);
+
   initiator_ = false;
-  remote_name_ = stanza->Attr(buzz::QN_FROM);
+  remote_name_ = msg.from;
+  set_remote_description(init.AdoptFormat());
   SetState(STATE_RECEIVEDINITIATE);
+
+  // User of Session may listen to state change and call Reject().
+  if (state_ != STATE_SENTREJECT && !transport_negotiated_) {
+    transport_negotiated_ = true;
+    ConnectTransportChannels(transport_);
+
+    // If the user wants to accept, allow that now
+    if (description_) {
+      Accept(description_);
+    }
+  }
   return true;
 }
 
-bool Session::OnAcceptMessage(const buzz::XmlElement* stanza,
-                              const buzz::XmlElement* session) {
-  if (!CheckState(stanza, STATE_SENTINITIATE))
-    return false;
-  if (!FindRemoteSessionDescription(stanza, session))
+bool Session::OnAcceptMessage(const SessionMessage& msg, SessionError* error) {
+  if (!CheckState(STATE_SENTINITIATE, error))
     return false;
 
+  SessionAccept accept;
+  if (!ParseSessionAccept(msg.action_elem, GetFormatParsers(), &accept, error))
+    return false;
+
+  set_remote_description(accept.AdoptFormat());
   SetState(STATE_RECEIVEDACCEPT);
   return true;
 }
 
-bool Session::OnRejectMessage(const buzz::XmlElement* stanza,
-                              const buzz::XmlElement* session) {
-  if (!CheckState(stanza, STATE_SENTINITIATE))
+bool Session::OnRejectMessage(const SessionMessage& msg, SessionError* error) {
+  if (!CheckState(STATE_SENTINITIATE, error))
     return false;
 
   SetState(STATE_RECEIVEDREJECT);
   return true;
 }
 
-bool Session::OnRedirectMessage(const buzz::XmlElement* stanza,
-                                const buzz::XmlElement* session) {
-  if (!CheckState(stanza, STATE_SENTINITIATE))
-    return false;
-
-  const buzz::XmlElement *redirect_target;
-  if (!FindRequiredElement(stanza, session, QN_REDIRECT_TARGET,
-                           &redirect_target))
-    return false;
-
-  if (!FindRequiredAttribute(stanza, redirect_target, buzz::QN_NAME,
-                             &remote_name_))
-    return false;
-
-  const buzz::XmlElement* redirect_cookie =
-      session->FirstNamed(QN_REDIRECT_COOKIE);
-
-  XmlElements elems;
-  elems.push_back(client_->TranslateSessionDescription(description_));
-  if (redirect_cookie)
-    elems.push_back(new buzz::XmlElement(*redirect_cookie));
-  SendSessionMessage("initiate", elems);
-
-  // Clear the connection timeout (if any).  We will start the connection
-  // timer from scratch when SignalConnecting fires.
-  signaling_thread_->Clear(this, MSG_TIMEOUT);
-
-  // Reset all of the sockets back into the initial state.
-  for (TransportList::iterator iter = potential_transports_.begin();
-       iter != potential_transports_.end();
-       ++iter) {
-    (*iter)->ResetChannels();
-  }
-
-  ConnectDefaultTransportChannels(false);
+// Only used by app/win32/fileshare.cc.
+bool Session::OnInfoMessage(const SessionMessage& msg) {
+  SignalInfoMessage(this, CopyOfXmlChildren(msg.action_elem));
   return true;
 }
 
-bool Session::OnInfoMessage(const buzz::XmlElement* stanza,
-                            const buzz::XmlElement* session) {
-  XmlElements elems;
-  for (const buzz::XmlElement* elem = session->FirstElement();
-       elem != NULL;
-       elem = elem->NextElement()) {
-    elems.push_back(new buzz::XmlElement(*elem));
-  }
+bool Session::OnTerminateMessage(const SessionMessage& msg,
+                                 SessionError* error) {
+  SessionTerminate term;
+  if (!ParseSessionTerminate(msg.action_elem, &term, error))
+    return false;
 
-  SignalInfoMessage(this, elems);
+  SignalReceivedTerminateReason(this, term.reason);
+  if (term.debug_reason != buzz::STR_EMPTY) {
+    LOG(LS_VERBOSE) << "Received error on call: " << term.debug_reason;
+  }
   return true;
 }
 
-bool Session::OnTransportAcceptMessage(const buzz::XmlElement* stanza,
-                                       const buzz::XmlElement* session) {
-  if (!CheckState(stanza, STATE_SENTINITIATE))
+bool Session::OnTransportInfoMessage(const SessionMessage& msg,
+                                     SessionError* error) {
+  TransportInfo info;
+  if (!ParseTransportInfo(msg.action_elem, GetTransportParsers(), &info, error))
     return false;
 
-  const buzz::XmlElement* transport_elem = NULL;
-
-  for (const buzz::XmlElement* elem = session->FirstElement();
-      elem != NULL;
-      elem = elem->NextElement()) {
-    if (elem->Name().LocalPart() == "transport") {
-      Transport* transport = GetTransport(elem->Name().Namespace());
-      if (transport) {
-        if (transport_elem) {  // trying to accept two transport?
-          SignalErrorMessage(this, stanza, buzz::QN_STANZA_BAD_REQUEST,
-                             "modify", "transport-accept has two answers",
-                             NULL);
-          return false;
-        }
-
-        transport_elem = elem;
-        if (!transport->OnTransportAnswer(transport_elem)) {
-          SignalErrorMessage(this, stanza, buzz::QN_STANZA_BAD_REQUEST,
-                             "modify", "transport-accept is not acceptable",
-                             NULL);
-          return false;
-        }
-        SetTransport(transport);
-      }
-    }
-  }
-
-  if (!transport_elem) {
-    SignalErrorMessage(this, stanza, buzz::QN_STANZA_NOT_ALLOWED, "modify",
-                       "no supported transport in answer", NULL);
-    return false;
-  }
-
-  // If we discovered that we need compatibility mode and we have sent some
-  // candidates already (using transport-info), then we need to re-send them
-  // using the candidates message.
-  if (compatibility_mode_ && (candidates_.size() > 0)) {
-    ASSERT(transport_ != NULL);
-    ASSERT(transport_->name() == kNsP2pTransport);
-    OnTransportSendMessage(transport_, candidates_);
-  } else {
-    for (size_t i = 0; i < candidates_.size(); ++i)
-      delete candidates_[i];
-  }
-  candidates_.clear();
-
-  return true;
-}
-
-bool Session::OnTransportInfoMessage(const buzz::XmlElement* stanza,
-                                     const buzz::XmlElement* session) {
-  for (const buzz::XmlElement* elem = session->FirstElement();
-      elem != NULL;
-      elem = elem->NextElement()) {
-    if (elem->Name().LocalPart() == "transport") {
-      Transport* transport = GetTransport(elem->Name().Namespace());
-      if (transport) {
-        if (!transport->OnTransportMessage(elem, stanza))
-          return false;
-      }
+  if (transport_->name() == info.transport_name) {
+    transport_->OnRemoteCandidates(info.candidates);
+    if (!transport_negotiated_) {
+      transport_negotiated_ = true;
+      ConnectTransportChannels(transport_);
     }
   }
   return true;
 }
 
-bool Session::OnTerminateMessage(const buzz::XmlElement* stanza,
-                                 const buzz::XmlElement* session) {
-  for (const buzz::XmlElement *elem = session->FirstElement();
-       elem != NULL;
-       elem = elem->NextElement()) {
-    // elem->Name().LocalPart() is the reason for termination
-    SignalReceivedTerminateReason(this, elem->Name().LocalPart());
-    // elem->FirstElement() might contain a debug string for termination
-    const buzz::XmlElement *debugElement = elem->FirstElement();
-    if (debugElement != NULL) {
-      LOG(LS_VERBOSE) << "Received error on call: "
-        << debugElement->Name().LocalPart();
-    }
-  }
-  SetState(STATE_RECEIVEDTERMINATE);
-  return true;
-}
-
-bool Session::OnCandidatesMessage(const buzz::XmlElement* stanza,
-                                  const buzz::XmlElement* session) {
-  // If we don't have a transport, then this is the first candidates message.
-  // We first create a fake transport-accept message in order to finish the
-  // negotiation and create a transport.
-  if (!transport_) {
-    compatibility_mode_ = true;
-
-    talk_base::scoped_ptr<buzz::XmlElement> transport_accept(
-        new buzz::XmlElement(QN_SESSION));
-    transport_accept->SetAttr(buzz::QN_TYPE, "transport-accept");
-
-    buzz::XmlElement* transport_offer =
-        new buzz::XmlElement(kQnP2pTransport, true);
-    transport_accept->AddElement(transport_offer);
-
-    // It is okay to pass the original stanza here.  That is only used if we
-    // send an error message.  Normal processing looks only at transport_accept.
-    bool valid = OnTransportAcceptMessage(stanza, transport_accept.get());
-    ASSERT(valid);
-    if (!valid)
-      LOG(LS_ERROR) << "OnCandidateMessage: not valid";
-  }
-
-  ASSERT(transport_ != NULL);
-  ASSERT(transport_->name() == kNsP2pTransport);
-
-  // Wrap the candidates in a transport element as they would appear in a
-  // transport-info message and send this to the transport.
-  talk_base::scoped_ptr<buzz::XmlElement> transport_info(
-      new buzz::XmlElement(kQnP2pTransport, true));
-  for (const buzz::XmlElement* elem = session->FirstNamed(kQnLegacyCandidate);
-       elem != NULL;
-       elem = elem->NextNamed(kQnLegacyCandidate)) {
-    buzz::XmlElement* new_candidate = new buzz::XmlElement(*elem);
-    new_candidate->SetName(kQnP2pCandidate);
-    transport_info->AddElement(new_candidate);
-  }
-  return transport_->OnTransportMessage(transport_info.get(), stanza);
-}
-
-bool Session::CheckState(const buzz::XmlElement* stanza, State state) {
+bool Session::CheckState(State state, SessionError* error) {
   ASSERT(state_ == state);
   if (state_ != state) {
-    SignalErrorMessage(this, stanza, buzz::QN_STANZA_NOT_ALLOWED, "modify",
-                       "message not allowed in current state", NULL);
-    return false;
+    return BadMessage(buzz::QN_STANZA_NOT_ALLOWED,
+                      "message not allowed in current state",
+                      error);
   }
   return true;
-}
-
-bool Session::FindRequiredElement(const buzz::XmlElement* stanza,
-                                  const buzz::XmlElement* parent,
-                                  const buzz::QName& name,
-                                  const buzz::XmlElement** elem) {
-  *elem = parent->FirstNamed(name);
-  if (*elem == NULL) {
-    std::string text;
-    text += "element '" + parent->Name().Merged() +
-            "' missing required child '" + name.Merged() + "'";
-    SignalErrorMessage(this, stanza, buzz::QN_STANZA_BAD_REQUEST, "modify",
-                       text, NULL);
-    return false;
-  }
-  return true;
-}
-
-bool Session::FindRemoteSessionDescription(const buzz::XmlElement* stanza,
-                                           const buzz::XmlElement* session) {
-  buzz::QName qn_session(session_type_, "description");
-  const buzz::XmlElement* desc;
-  if (!FindRequiredElement(stanza, session, qn_session, &desc))
-    return false;
-  set_remote_description(client_->CreateSessionDescription(desc));
-  if (remote_description_ == NULL) {
-    SignalErrorMessage(this, stanza, buzz::QN_STANZA_BAD_REQUEST,
-                       "modify", "session description is not acceptable",
-                       NULL);
-    return false;
-  }
-  return true;
-}
-
-bool Session::FindRequiredAttribute(const buzz::XmlElement* stanza,
-                                    const buzz::XmlElement* elem,
-                                    const buzz::QName& name,
-                                    std::string* value) {
-  if (!elem->HasAttr(name)) {
-    std::string text;
-    text += "element '" + elem->Name().Merged() +
-            "' missing required attribute '" + name.Merged() + "'";
-    SignalErrorMessage(this, stanza, buzz::QN_STANZA_BAD_REQUEST, "modify",
-                       text, NULL);
-    return false;
-  } else {
-    *value = elem->Attr(name);
-    return true;
-  }
 }
 
 void Session::OnMessage(talk_base::Message *pmsg) {
@@ -1067,6 +612,61 @@ void Session::OnMessage(talk_base::Message *pmsg) {
     }
     break;
   }
+}
+
+void Session::SendInitiateMessage(const SessionDescription *description) {
+  SessionInitiate init(transport_->name(), session_type_, description);
+  XmlElements elems;
+  WriteSessionInitiate(init, GetFormatParsers(), current_protocol_, &elems);
+  SendMessage(ACTION_SESSION_INITIATE, elems);
+}
+
+void Session::SendAcceptMessage() {
+  // TODO(pthatcher): When we support the Jingle standard, we need to
+  // include at least an empty <transport> in the accept.
+  std::string transport_name = "";
+  SessionAccept accept(transport_name, session_type_, description_);
+
+  XmlElements elems;
+  WriteSessionAccept(accept, GetFormatParsers(), &elems);
+  SendMessage(ACTION_SESSION_ACCEPT, elems);
+}
+
+void Session::SendRejectMessage() {
+  XmlElements elems;
+  SendMessage(ACTION_SESSION_REJECT, elems);
+}
+
+void Session::SendTerminateMessage() {
+  XmlElements elems;
+  SendMessage(ACTION_SESSION_TERMINATE, elems);
+}
+
+void Session::SendTransportInfoMessage(const Candidates& candidates) {
+  TransportInfo info(transport_->name(), candidates);
+  XmlElements elems;
+  WriteTransportInfo(info, GetTransportParsers(), current_protocol_, &elems);
+  SendMessage(ACTION_TRANSPORT_INFO, elems);
+}
+
+void Session::SendMessage(ActionType type, const XmlElements& action_elems) {
+  SessionMessage msg(current_protocol_, type, id_.id_str(), id_.initiator());
+  msg.to = remote_name_;
+
+  talk_base::scoped_ptr<buzz::XmlElement> stanza(
+      new buzz::XmlElement(buzz::QN_IQ));
+  WriteSessionMessage(msg, action_elems, stanza.get());
+  SignalOutgoingMessage(this, stanza.get());
+}
+
+void Session::SendAcknowledgementMessage(const buzz::XmlElement* stanza) {
+  talk_base::scoped_ptr<buzz::XmlElement> ack(
+      new buzz::XmlElement(buzz::QN_IQ));
+  ack->SetAttr(buzz::QN_TO, remote_name_);
+  ack->SetAttr(buzz::QN_ID, stanza->Attr(buzz::QN_ID));
+  ack->SetAttr(buzz::QN_TYPE, "result");
+
+  SignalOutgoingMessage(this, ack.get());
 }
 
 }  // namespace cricket
