@@ -217,6 +217,7 @@ def AddMediaLibs(env, **kwargs):
     'LmiSignaling',
     'LmiStun',
     'LmiTransport',
+    'LmiUi',
     'LmiUtils',
     'LmiVideoCommon',
     'LmiXml',

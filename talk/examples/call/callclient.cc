@@ -163,9 +163,6 @@ void CallClient::ParseLine(const std::string& line) {
       call_->Mute(true);
     } else if ((words.size() == 1) && (words[0] == "unmute")) {
       call_->Mute(false);
-    } else if ((words.size() == 2) && (words[0] == "dtmf")) {
-      int ev = std::string("0123456789*#").find(words[1][0]);
-      call_->PressDTMF(ev);
     } else {
       console_->Print(CALL_COMMANDS);
     }
