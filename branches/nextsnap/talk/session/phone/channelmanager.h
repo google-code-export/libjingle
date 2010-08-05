@@ -28,6 +28,7 @@
 #ifndef TALK_SESSION_PHONE_CHANNELMANAGER_H_
 #define TALK_SESSION_PHONE_CHANNELMANAGER_H_
 
+#include <string>
 #include <vector>
 
 #include "talk/base/criticalsection.h"
@@ -57,12 +58,21 @@ class VoiceChannel;
 class ChannelManager : public talk_base::MessageHandler,
                        public sigslot::has_slots<> {
  public:
-  // Creates the channel manager, and initializes it if the thread is not NULL.
+  // Creates the channel manager, and specifies the worker thread to use.
   explicit ChannelManager(talk_base::Thread* worker);
   // For testing purposes. Allows the media engine and dev manager to be mocks.
   // The ChannelManager takes ownership of these objects.
   ChannelManager(MediaEngine* me, DeviceManager* dm, talk_base::Thread* worker);
   ~ChannelManager();
+
+  // Accessors for the worker thread, allowing it to be set after construction,
+  // but before Init. set_worker_thread will return false if called after Init.
+  talk_base::Thread* worker_thread() const { return worker_thread_; }
+  bool set_worker_thread(talk_base::Thread* thread) {
+    if (initialized_) return false;
+    worker_thread_ = thread;
+    return true;
+  }
 
   // Gets capabilities. Can be called prior to starting the media engine.
   int GetCapabilities();
@@ -83,9 +93,12 @@ class ChannelManager : public talk_base::MessageHandler,
 
   // Indicates whether the media engine is started.
   bool initialized() const { return initialized_; }
-  talk_base::Thread* worker_thread() const { return worker_thread_; }
   // Starts up the media engine.
-  bool Init(talk_base::Thread* worker_thread);
+  bool Init();
+  // TODO(juberti): Remove this temporary API once Flute is updated.
+  bool Init(talk_base::Thread* thread) {
+    return set_worker_thread(thread) && Init();
+  }
   // Shuts down the media engine.
   void Terminate();
 
@@ -129,7 +142,7 @@ class ChannelManager : public talk_base::MessageHandler,
   // Sets the local renderer where to renderer the local camera.
   bool SetLocalRenderer(VideoRenderer* renderer);
   // Starts and stops the local camera and renders it to the local renderer.
-  MediaEngine::CaptureResult SetVideoCapture(bool capture);
+  CaptureResult SetVideoCapture(bool capture);
   bool capturing() const { return capturing_; }
 
   // Configures the logging output of the mediaengine(s).
@@ -149,7 +162,7 @@ class ChannelManager : public talk_base::MessageHandler,
   typedef std::vector<VideoChannel*> VideoChannels;
   typedef std::vector<Soundclip*> Soundclips;
 
-  void Construct(talk_base::Thread* worker_thread);
+  void Construct();
   bool Send(uint32 id, talk_base::MessageData* pdata);
   VoiceChannel* CreateVoiceChannel_w(BaseSession* session, bool rtcp);
   void DestroyVoiceChannel_w(VoiceChannel* voice_channel);
@@ -165,7 +178,7 @@ class ChannelManager : public talk_base::MessageHandler,
   bool SetVideoOptions_w(const Device* cam_device);
   bool SetDefaultVideoCodec_w(const VideoCodec& codec);
   bool SetLocalRenderer_w(VideoRenderer* renderer);
-  MediaEngine::CaptureResult SetVideoCapture_w(bool capture);
+  CaptureResult SetVideoCapture_w(bool capture);
   void SetMediaLogging(bool video, int level, const char* filter);
   void SetMediaLogging_w(bool video, int level, const char* filter);
   void OnVideoCaptureResult(bool result);
@@ -190,6 +203,7 @@ class ChannelManager : public talk_base::MessageHandler,
   int audio_options_;
   std::string camera_device_;
   VideoCodec default_video_codec_;
+  VideoRenderer* local_renderer_;
 
   bool capturing_;
   bool monitoring_;

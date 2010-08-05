@@ -25,24 +25,26 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef POSIX
+#include "talk/base/thread.h"
+
+#if defined(WIN32)
+#include <comdef.h>
+#define MSDEV_SET_THREAD_NAME  0x406D1388
+#elif defined(POSIX)
 #include <time.h>
 #endif
 
 #include "talk/base/common.h"
 #include "talk/base/logging.h"
-#include "talk/base/thread.h"
 #include "talk/base/time.h"
 
-#if defined(OSX_USE_COCOA)
+#ifdef OSX_USE_COCOA
 #ifndef OSX
 #error OSX_USE_COCOA is defined but not OSX
 #endif
 #include "talk/base/maccocoathreadhelper.h"
 #include "talk/base/scoped_autorelease_pool.h"
 #endif
-
-#define MSDEV_SET_THREAD_NAME  0x406D1388
 
 namespace talk_base {
 
@@ -492,4 +494,17 @@ AutoThread::~AutoThread() {
   }
 }
 
-} // namespace talk_base
+#ifdef WIN32
+void ComThread::Run() {
+  HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+  ASSERT(SUCCEEDED(hr));
+  if (SUCCEEDED(hr)) {
+    Thread::Run();
+    CoUninitialize();
+  } else {
+    LOG(LS_ERROR) << "CoInitialize failed, hr=" << hr;
+  }
+}
+#endif
+
+}  // namespace talk_base
