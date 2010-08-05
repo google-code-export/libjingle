@@ -307,11 +307,18 @@ TransportChannel* Session::CreateChannel(const std::string& name) {
   ASSERT(channels_.find(name) == channels_.end());
   ASSERT(!transport_->HasChannel(name));
 
+  // We always create a proxy in case we need to change out the transport later.
   TransportChannelProxy* channel =
       new TransportChannelProxy(name, session_type_);
   channels_[name] = channel;
+
+  // If we've already decided on a transport, create the transport channel and
+  // tell the proxy to use it.
   if (transport_negotiated_) {
     channel->SetImplementation(transport_->CreateChannel(name, session_type_));
+  // If we're in the process of initiating the session, the transport will
+  // be trying to connect its channels, so just add a new transport channel.
+  // When we decide on a transport, we'll hook it up to the new proxy.
   } else if (state_ == STATE_SENTINITIATE) {
     transport_->CreateChannel(name, session_type());
   }
@@ -513,7 +520,7 @@ bool Session::OnInitiateMessage(const SessionMessage& msg,
   set_remote_description(init.AdoptFormat());
   SetState(STATE_RECEIVEDINITIATE);
 
-  // User of Session may listen to state change and call Reject().
+  // Users of Session may listen to state change and call Reject().
   if (state_ != STATE_SENTREJECT && !transport_negotiated_) {
     transport_negotiated_ = true;
     ConnectTransportChannels(transport_);
@@ -536,6 +543,13 @@ bool Session::OnAcceptMessage(const SessionMessage& msg, SessionError* error) {
 
   set_remote_description(accept.AdoptFormat());
   SetState(STATE_RECEIVEDACCEPT);
+
+  // Users of Session may listen to state change and call Reject().
+  if (state_ != STATE_SENTREJECT && !transport_negotiated_) {
+    transport_negotiated_ = true;
+    ConnectTransportChannels(transport_);
+  }
+
   return true;
 }
 
@@ -563,6 +577,8 @@ bool Session::OnTerminateMessage(const SessionMessage& msg,
   if (term.debug_reason != buzz::STR_EMPTY) {
     LOG(LS_VERBOSE) << "Received error on call: " << term.debug_reason;
   }
+
+  SetState(STATE_RECEIVEDTERMINATE);
   return true;
 }
 

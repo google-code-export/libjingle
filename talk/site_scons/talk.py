@@ -233,11 +233,13 @@ def AddMediaLibs(env, **kwargs):
 
   if env.Bit('windows'):
     AddToDict(kwargs, 'libs', [
+      'dsound',
+      'd3d9',
+      'gdi32',
       'ippcorel',
       'ippscmerged',
       'ippscemerged',
       'strmiids',
-      'dsound',
     ])
   else:
     AddToDict(kwargs, 'libs', [

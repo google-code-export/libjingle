@@ -912,6 +912,7 @@ static bool ShouldDeviceBeIgnored(const std::string& device_name) {
       "Bluetooth Video",         // Bad Sony viao bluetooth sharing driver
 #elif OSX
       "DVCPRO HD",               // Final cut
+      "Sonix SN9C201p",          // Crashes in OpenAComponent and CloseComponent
 #endif
   };
 

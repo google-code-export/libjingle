@@ -85,9 +85,7 @@ class FileVideoEngine {
   int GetCapabilities() { return 0; }
   bool SetOptions(int opts) { return true; }
   bool SetLocalRenderer(VideoRenderer* renderer) { return true; }
-  MediaEngine::CaptureResult SetCapture(bool capture) {
-    return MediaEngine::CR_SUCCESS;
-  }
+  CaptureResult SetCapture(bool capture) { return CR_SUCCESS;  }
   const std::vector<VideoCodec>& codecs();
   bool FindCodec(const VideoCodec& codec);
   bool SetDefaultCodec(const VideoCodec& codec);

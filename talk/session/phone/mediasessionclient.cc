@@ -61,6 +61,10 @@ void MediaSessionClient::Construct() {
   session_manager_->AddClient(NS_GINGLE_VIDEO, this);
   // Forward device notifications.
   SignalDevicesChange.repeat(channel_manager_->SignalDevicesChange);
+  // Bring up the channel manager.
+  // In previous versions of ChannelManager, this was done automatically
+  // in the constructor.
+  channel_manager_->Init();
 }
 
 MediaSessionClient::~MediaSessionClient() {

@@ -62,6 +62,7 @@ root_env = Environment(
     'FEATURE_ENABLE_PSTN',
     'HAVE_GIPS',
     'HAVE_LMI',
+    'HAVE_SRTP',
   ]
 )
 
@@ -214,11 +215,10 @@ mac_env.Append(
   CPPDEFINES = [
     'OSX',
     'MAC_OS_X_VERSION_MIN_REQUIRED=1040',
-    'HAVE_SRTP',
   ],
   CCFLAGS = [
     '-arch', 'i386',
-    '-isysroot', '/Developer/SDKs/MacOSX10.4u.sdk',
+    '-isysroot', '/Developer/SDKs/MacOSX10.5.sdk',
     '-fasm-blocks',
   ],
   LINKFLAGS = [
@@ -235,6 +235,7 @@ mac_env.Append(
     'Carbon',
     'Security',
     'SystemConfiguration',
+    'OpenGL',
   ]
 )
 
@@ -283,7 +284,6 @@ linux_env.Append(
     'LINUX',
     'HAVE_GLIB',
     # TODO() Enable once we figure out multiple defines with gips lib
-    #'HAVE_SRTP',
     # Also consider other linux flags:  64bit, no-strict-aliasing, wrap, etc
   ],
   LINKFLAGS = [

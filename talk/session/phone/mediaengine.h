@@ -42,6 +42,7 @@
 #ifdef USE_TALK_SOUND
 #include "talk/sound/soundsystemfactory.h"
 #endif
+#include "talk/session/phone/videocommon.h"
 
 namespace cricket {
 
@@ -84,13 +85,6 @@ class MediaEngine {
     DEFAULT_AUDIO_OPTIONS = ECHO_CANCELLATION | AUTO_GAIN_CONTROL
   };
   enum VideoOptions {
-  };
-
-  enum CaptureResult {
-    CR_SUCCESS,
-    CR_PENDING,
-    CR_FAILURE,
-    CR_NO_DEVICE,
   };
 
   virtual ~MediaEngine() {}
@@ -168,7 +162,9 @@ template<class VOICE, class VIDEO>
 class CompositeMediaEngine : public MediaEngine {
  public:
 #ifdef USE_TALK_SOUND
-  CompositeMediaEngine(SoundSystemFactory *factory) : voice_(factory) {}
+  explicit CompositeMediaEngine(SoundSystemFactory *factory)
+      : voice_(factory) {
+  }
 #endif
   CompositeMediaEngine() {}
   virtual bool Init() {
@@ -230,7 +226,7 @@ class CompositeMediaEngine : public MediaEngine {
   virtual bool SetLocalRenderer(VideoRenderer* renderer) {
     return video_.SetLocalRenderer(renderer);
   }
-  virtual MediaEngine::CaptureResult SetVideoCapture(bool capture) {
+  virtual CaptureResult SetVideoCapture(bool capture) {
     return video_.SetCapture(capture);
   }
 
@@ -301,9 +297,7 @@ class NullVideoEngine {
   bool SetDefaultCodec(const VideoCodec& codec) { return true; }
   bool SetCaptureDevice(const Device* cam_device) { return true; }
   bool SetLocalRenderer(VideoRenderer* renderer) { return true; }
-  MediaEngine::CaptureResult SetCapture(bool capture) {
-    return MediaEngine::CR_SUCCESS;
-  }
+  CaptureResult SetCapture(bool capture) { return CR_SUCCESS;  }
   const std::vector<VideoCodec>& codecs() { return codecs_; }
   bool FindCodec(const VideoCodec&) { return false; }
   void SetLogging(int min_sev, const char* filter) {}
