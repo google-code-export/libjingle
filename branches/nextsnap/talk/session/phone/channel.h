@@ -44,7 +44,7 @@
 
 namespace cricket {
 
-class MediaSessionDescription;
+class MediaContentDescription;
 struct CryptoParams;
 
 enum {
@@ -52,8 +52,8 @@ enum {
   MSG_DISABLE = 2,
   MSG_MUTE = 3,
   MSG_UNMUTE = 4,
-  MSG_SETREMOTEDESCRIPTION = 5,
-  MSG_SETLOCALDESCRIPTION = 6,
+  MSG_SETREMOTECONTENT = 5,
+  MSG_SETLOCALCONTENT = 6,
   MSG_EARLYMEDIATIMEOUT = 8,
   MSG_PRESSDTMF = 9,
   MSG_SETRENDERER = 10,
@@ -76,10 +76,10 @@ class RtcpMuxFilter {
   bool IsActive() const;
 
   // Specifies whether the offer indicates the use of RTCP mux.
-  bool SetOffer(bool offer_enable, DescriptionSource src);
+  bool SetOffer(bool offer_enable, ContentSource src);
 
   // Specifies whether the answer indicates the use of RTCP mux.
-  bool SetAnswer(bool answer_enable, DescriptionSource src);
+  bool SetAnswer(bool answer_enable, ContentSource src);
 
   // Determines whether the specified packet is RTCP.
   bool DemuxRtcp(const char* data, int len);
@@ -117,10 +117,10 @@ class BaseChannel
 
   // Channel control
   bool SetRtcpCName(const std::string& cname);
-  bool SetLocalDescription(const MediaSessionDescription& desc,
-                           DescriptionType type);
-  bool SetRemoteDescription(const MediaSessionDescription& desc,
-                            DescriptionType type);
+  bool SetLocalContent(const MediaContentDescription* content,
+                       ContentAction action);
+  bool SetRemoteContent(const MediaContentDescription* content,
+                        ContentAction action);
   bool SetMaxSendBandwidth(int max_bandwidth);
 
   bool Enable(bool enable);
@@ -189,22 +189,26 @@ class BaseChannel
   };
   bool SetRtcpCName_w(const std::string& cname);
 
-  struct SetDescriptionData : public talk_base::MessageData {
-    SetDescriptionData(const MediaSessionDescription& desc,
-                       DescriptionType type)
-        : desc(desc), type(type), result(false) {}
-    const MediaSessionDescription& desc;
-    DescriptionType type;
+  struct SetContentData : public talk_base::MessageData {
+    SetContentData(const MediaContentDescription* content,
+                   ContentAction action)
+        : content(content), action(action), result(false) {}
+    const MediaContentDescription* content;
+    ContentAction action;
     bool result;
   };
-  virtual bool SetLocalDescription_w(const MediaSessionDescription& desc,
-                                     DescriptionType type) = 0;
-  virtual bool SetRemoteDescription_w(const MediaSessionDescription& desc,
-                                      DescriptionType type) = 0;
 
-  bool SetSrtp_w(const std::vector<CryptoParams>& params, DescriptionType type,
-                 DescriptionSource src);
-  bool SetRtcpMux_w(bool enable, DescriptionType type, DescriptionSource src);
+  // Gets the content appropriate to the channel (audio or video).
+  virtual const MediaContentDescription* GetFirstContent(
+      const SessionDescription* sdesc) = 0;
+  virtual bool SetLocalContent_w(const MediaContentDescription* content,
+                                 ContentAction action) = 0;
+  virtual bool SetRemoteContent_w(const MediaContentDescription* content,
+                                  ContentAction action) = 0;
+
+  bool SetSrtp_w(const std::vector<CryptoParams>& params, ContentAction action,
+                 ContentSource src);
+  bool SetRtcpMux_w(bool enable, ContentAction action, ContentSource src);
 
   struct SetBandwidthData : public talk_base::MessageData {
     explicit SetBandwidthData(int value) : value(value), result(false) {}
@@ -312,10 +316,12 @@ class VoiceChannel : public BaseChannel {
   virtual void OnChannelRead(TransportChannel* channel,
                              const char *data, size_t len);
   virtual void ChangeState();
-  virtual bool SetLocalDescription_w(const MediaSessionDescription& desc,
-                                     DescriptionType type);
-  virtual bool SetRemoteDescription_w(const MediaSessionDescription& desc,
-                                      DescriptionType type);
+  virtual const MediaContentDescription* GetFirstContent(
+      const SessionDescription* sdesc);
+  virtual bool SetLocalContent_w(const MediaContentDescription* content,
+                                 ContentAction action);
+  virtual bool SetRemoteContent_w(const MediaContentDescription* content,
+                                  ContentAction action);
 
   void AddStream_w(uint32 ssrc);
   void RemoveStream_w(uint32 ssrc);
@@ -367,10 +373,12 @@ class VideoChannel : public BaseChannel {
  private:
   // overrides from BaseChannel
   virtual void ChangeState();
-  virtual bool SetLocalDescription_w(const MediaSessionDescription& desc,
-                                     DescriptionType type);
-  virtual bool SetRemoteDescription_w(const MediaSessionDescription& desc,
-                                      DescriptionType type);
+  virtual const MediaContentDescription* GetFirstContent(
+      const SessionDescription* sdesc);
+  virtual bool SetLocalContent_w(const MediaContentDescription* content,
+                                 ContentAction action);
+  virtual bool SetRemoteContent_w(const MediaContentDescription* content,
+                                  ContentAction action);
 
   void AddStream_w(uint32 ssrc, uint32 voice_ssrc);
   void RemoveStream_w(uint32 ssrc);

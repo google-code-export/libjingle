@@ -57,7 +57,7 @@ enum {
   MSG_DESTROYVIDEOCHANNEL = 12,
   MSG_SETVIDEOOPTIONS = 13,
   MSG_SETLOCALRENDERER = 14,
-  MSG_SETDEFAULTVIDEOCODEC = 15,
+  MSG_SETDEFAULTVIDEOENCODERCONFIG = 15,
   MSG_SETVIDEOLOGGING = 16,
   MSG_CREATESOUNDCLIP = 17,
   MSG_DESTROYSOUNDCLIP = 18,
@@ -96,9 +96,10 @@ struct VideoOptions : public talk_base::MessageData {
   bool result;
 };
 
-struct DefaultVideoCodec : public talk_base::MessageData {
-  explicit DefaultVideoCodec(const VideoCodec& c) : codec(c), result(false) {}
-  VideoCodec codec;
+struct DefaultVideoEncoderConfig : public talk_base::MessageData {
+  explicit DefaultVideoEncoderConfig(const VideoEncoderConfig& c)
+      : config(c), result(false) {}
+  VideoEncoderConfig config;
   bool result;
 };
 
@@ -191,11 +192,13 @@ int ChannelManager::GetCapabilities() {
   return media_engine_->GetCapabilities() & device_manager_->GetCapabilities();
 }
 
-void ChannelManager::GetSupportedCodecs(std::vector<Codec>* codecs) const {
+void ChannelManager::GetSupportedAudioCodecs(
+    std::vector<AudioCodec>* codecs) const {
   codecs->clear();
 
-  for (std::vector<Codec>::const_iterator it = media_engine_->codecs().begin();
-      it != media_engine_->codecs().end(); ++it) {
+  for (std::vector<AudioCodec>::const_iterator it =
+           media_engine_->audio_codecs().begin();
+      it != media_engine_->audio_codecs().end(); ++it) {
     codecs->push_back(*it);
   }
 }
@@ -233,8 +236,8 @@ bool ChannelManager::Init() {
         camera_device_.clear();
       }
       // Now apply the default video codec that has been set earlier.
-      if (default_video_codec_.id != 0) {
-        SetDefaultVideoCodec(default_video_codec_);
+      if (default_video_encoder_config_.max_codec.id != 0) {
+        SetDefaultVideoEncoderConfig(default_video_encoder_config_);
       }
       // And the local renderer.
       if (local_renderer_) {
@@ -530,22 +533,23 @@ bool ChannelManager::SetVideoOptions_w(const Device* cam_device) {
   return media_engine_->SetVideoCaptureDevice(cam_device);
 }
 
-bool ChannelManager::SetDefaultVideoCodec(const VideoCodec& c) {
+bool ChannelManager::SetDefaultVideoEncoderConfig(const VideoEncoderConfig& c) {
   bool ret = true;
   if (initialized_) {
-    DefaultVideoCodec codec(c);
-    ret = Send(MSG_SETDEFAULTVIDEOCODEC, &codec) && codec.result;
+    DefaultVideoEncoderConfig config(c);
+    ret = Send(MSG_SETDEFAULTVIDEOENCODERCONFIG, &config) && config.result;
   }
   if (ret) {
-    default_video_codec_ = c;
+    default_video_encoder_config_ = c;
   }
   return ret;
 }
 
-bool ChannelManager::SetDefaultVideoCodec_w(const VideoCodec& c) {
+bool ChannelManager::SetDefaultVideoEncoderConfig_w(
+    const VideoEncoderConfig& c) {
   ASSERT(worker_thread_ == talk_base::Thread::Current());
   ASSERT(initialized_);
-  return media_engine_->SetDefaultVideoCodec(c);
+  return media_engine_->SetDefaultVideoEncoderConfig(c);
 }
 
 bool ChannelManager::SetLocalMonitor(bool enable) {
@@ -700,9 +704,10 @@ void ChannelManager::OnMessage(talk_base::Message* message) {
       p->result = SetVideoOptions_w(p->cam_device);
       break;
     }
-    case MSG_SETDEFAULTVIDEOCODEC: {
-      DefaultVideoCodec* p = static_cast<DefaultVideoCodec*>(data);
-      p->result = SetDefaultVideoCodec_w(p->codec);
+    case MSG_SETDEFAULTVIDEOENCODERCONFIG: {
+      DefaultVideoEncoderConfig* p =
+          static_cast<DefaultVideoEncoderConfig*>(data);
+      p->result = SetDefaultVideoEncoderConfig_w(p->config);
       break;
     }
     case MSG_SETLOCALRENDERER: {

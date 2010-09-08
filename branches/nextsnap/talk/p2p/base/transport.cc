@@ -43,8 +43,8 @@ struct ChannelParams {
   explicit ChannelParams(const std::string& name)
       : name(name), channel(NULL), candidate(NULL) {}
   ChannelParams(const std::string& name,
-                const std::string& session_type)
-      : name(name), session_type(session_type),
+                const std::string& content_type)
+      : name(name), content_type(content_type),
         channel(NULL), candidate(NULL) {}
   explicit ChannelParams(cricket::Candidate* candidate) :
       channel(NULL), candidate(candidate) {
@@ -56,7 +56,7 @@ struct ChannelParams {
   }
 
   std::string name;
-  std::string session_type;
+  std::string content_type;
   cricket::TransportChannelImpl* channel;
   cricket::Candidate* candidate;
 };
@@ -91,18 +91,18 @@ Transport::~Transport() {
 }
 
 TransportChannelImpl* Transport::CreateChannel(
-    const std::string& name, const std::string& session_type) {
-  ChannelParams params(name, session_type);
+    const std::string& name, const std::string& content_type) {
+  ChannelParams params(name, content_type);
   ChannelMessage msg(&params);
   worker_thread()->Send(this, MSG_CREATECHANNEL, &msg);
   return msg.data()->channel;
 }
 
 TransportChannelImpl* Transport::CreateChannel_w(
-    const std::string& name, const std::string& session_type) {
+    const std::string& name, const std::string& content_type) {
   ASSERT(worker_thread()->IsCurrent());
 
-  TransportChannelImpl* impl = CreateTransportChannel(name, session_type);
+  TransportChannelImpl* impl = CreateTransportChannel(name, content_type);
   impl->SignalReadableState.connect(this, &Transport::OnChannelReadableState);
   impl->SignalWritableState.connect(this, &Transport::OnChannelWritableState);
   impl->SignalRequestSignaling.connect(
@@ -356,7 +356,7 @@ void Transport::OnMessage(talk_base::Message* msg) {
   case MSG_CREATECHANNEL:
     {
       ChannelParams* params = static_cast<ChannelMessage*>(msg->pdata)->data();
-      params->channel = CreateChannel_w(params->name, params->session_type);
+      params->channel = CreateChannel_w(params->name, params->content_type);
     }
     break;
   case MSG_DESTROYCHANNEL:

@@ -121,9 +121,9 @@ class VoiceMediaChannel : public MediaChannel {
   VoiceMediaChannel() {}
   virtual ~VoiceMediaChannel() {}
   // Sets the codecs/payload types to be used for incoming media.
-  virtual bool SetRecvCodecs(const std::vector<Codec>& codecs) = 0;
+  virtual bool SetRecvCodecs(const std::vector<AudioCodec>& codecs) = 0;
   // Sets the codecs/payload types to be used for outgoing media.
-  virtual bool SetSendCodecs(const std::vector<Codec>& codecs) = 0;
+  virtual bool SetSendCodecs(const std::vector<AudioCodec>& codecs) = 0;
   // Starts or stops playout of received audio.
   virtual bool SetPlayout(bool playout) = 0;
   // Starts or stops sending (and potentially capture) of local audio.

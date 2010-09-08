@@ -88,7 +88,7 @@ class FileVideoEngine {
   CaptureResult SetCapture(bool capture) { return CR_SUCCESS;  }
   const std::vector<VideoCodec>& codecs();
   bool FindCodec(const VideoCodec& codec);
-  bool SetDefaultCodec(const VideoCodec& codec);
+  bool SetDefaultEncoderConfig(const VideoEncoderConfig& config);
   void SetLogging(int severity, const char* filter) {}
   sigslot::signal1<bool> SignalCaptureResult;
 

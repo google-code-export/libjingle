@@ -79,13 +79,13 @@ class ChannelManager : public talk_base::MessageHandler,
 
   // Retrieves the list of supported audio & video codec types.
   // Can be called before starting the media engine.
-  void GetSupportedCodecs(std::vector<Codec>* codecs) const;
+  void GetSupportedAudioCodecs(std::vector<AudioCodec>* codecs) const;
   void GetSupportedVideoCodecs(std::vector<VideoCodec>* codecs) const;
 
   // Determines if a specific audio or video codec is supported.
   // Can be called before starting the media engine.
-  bool FindCodec(const Codec& codec) const {
-    return media_engine_->FindCodec(codec);
+  bool FindAudioCodec(const AudioCodec& codec) const {
+    return media_engine_->FindAudioCodec(codec);
   }
   bool FindVideoCodec(const VideoCodec& video_codec) const {
     return media_engine_->FindVideoCodec(video_codec);
@@ -134,7 +134,7 @@ class ChannelManager : public talk_base::MessageHandler,
   bool SetOutputVolume(int level);
   bool GetVideoOptions(std::string* cam_device);
   bool SetVideoOptions(const std::string& cam_device);
-  bool SetDefaultVideoCodec(const VideoCodec& codec);
+  bool SetDefaultVideoEncoderConfig(const VideoEncoderConfig& config);
 
   // Starts/stops the local microphone and enables polling of the input level.
   bool SetLocalMonitor(bool enable);
@@ -176,7 +176,7 @@ class ChannelManager : public talk_base::MessageHandler,
   bool SetOutputVolume_w(int level);
   bool SetLocalMonitor_w(bool enable);
   bool SetVideoOptions_w(const Device* cam_device);
-  bool SetDefaultVideoCodec_w(const VideoCodec& codec);
+  bool SetDefaultVideoEncoderConfig_w(const VideoEncoderConfig& config);
   bool SetLocalRenderer_w(VideoRenderer* renderer);
   CaptureResult SetVideoCapture_w(bool capture);
   void SetMediaLogging(bool video, int level, const char* filter);
@@ -202,7 +202,7 @@ class ChannelManager : public talk_base::MessageHandler,
   std::string audio_out_device_;
   int audio_options_;
   std::string camera_device_;
-  VideoCodec default_video_codec_;
+  VideoEncoderConfig default_video_encoder_config_;
   VideoRenderer* local_renderer_;
 
   bool capturing_;
