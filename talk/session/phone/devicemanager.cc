@@ -188,6 +188,7 @@ static bool FilterDevice(const Device& d) {
 #endif
 
 bool DeviceManager::GetVideoCaptureDevices(std::vector<Device>* devices) {
+  devices->clear();
 #ifdef OSX
   if (GetQTKitVideoDevices(devices)) {
     // Now filter out any known incompatible devices
