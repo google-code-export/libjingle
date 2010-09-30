@@ -2,9 +2,15 @@
 
 = What's is the status of libjingle? =
 
-While there hasn't been an update to the public version of libjingle for a while, a version of libjingle internal to Google has been under continual development.  We are currently preparing an update to the public version.  In the meantime, you can continue developing with version 0.4.   Updating to a newer version later shouldn't be a problem.  
+We just released a new version, 0.5, with many updates.  There is now support for video, and the "jingle" standard (XEP-166 and XEP-167).  Also, the license has been changed from GPL to BSD.  There are also lots of bug fixes and performance improvements.
 
-The new version will include support for video.
+= How does the build of 0.5 differ from 0.4? =
+
+See the README for details.  Basically, you'll need to download one tool and two libraries:
+
+swtoolkit: http://code.google.com/p/swtoolkit/
+libsrtp: http://sourceforge.net/projects/srtp/develop
+expat: http://sourceforge.net/projects/expat/
 
 = How does libjingle compare to other XMPP stacks? =
 
@@ -13,7 +19,3 @@ libjingle isn't just an XMPP stack.  It's more a P2P (peer-to-peer) and RTC (rea
 For example, if you are building an application that synchronizes data between devices, you can use any XMPP stack to send small chunks of XML through an XMPP server.  But if the data is large, then you'll need a direct socket between the peers.  You'll want libjingle for that.
 
 libjingle is also obviously well suited to interop with Google Talk and other XMPP chat clients that work with the Jingle protocol (http://xmpp.org/extensions/xep-0166.html).
-
-= When will libjingle be compliant with the Jingle spec? =
-
-Soon.  We're hard at work on it.
