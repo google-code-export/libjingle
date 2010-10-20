@@ -1,0 +1,7 @@
+#summary Documentation in Korean
+
+YoungGi Lim has kindly translated the libjingle documentation into Korean:
+
+[https://sites.google.com/site/libjinglekor/ https://sites.google.com/site/libjinglekor/]
+
+Please note that this translation is written by and maintained independently by him, and not by Google.
