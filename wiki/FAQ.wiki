@@ -20,7 +20,7 @@ swtoolkit: http://code.google.com/p/swtoolkit/
 libsrtp: http://sourceforge.net/projects/srtp/develop
 expat: http://sourceforge.net/projects/expat/
 
-= What XEPs does 0.5 support =
+= What XEPs does libjingle support? =
 
 Libjingle has basic support for XEP-166 and XEP-167.  It also supports the pre-standard versions of those protocols that Google Talk currently uses (web-based Google Talk will be updated to speak jingle soon).  
 
