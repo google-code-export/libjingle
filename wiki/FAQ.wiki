@@ -20,6 +20,13 @@ swtoolkit: http://code.google.com/p/swtoolkit/
 libsrtp: http://sourceforge.net/projects/srtp/develop
 expat: http://sourceforge.net/projects/expat/
 
+= What XEPs does 0.5 support =
+
+Libjingle has basic support for XEP-166 and XEP-167.  It also supports the pre-standard versions of those protocols that Google Talk currently uses (web-based Google Talk will be updated to speak jingle soon).  
+
+Libjingle does not yet have support for XEP-176 because it uses a pre-standard version of ICE-UDP.  We're looking at how we can fully implement XEP-176 and ICE-UDP.
+
+
 = What about the "nextsnap" branch? =
 
 The "nextsnap" branch was temporary, but will be left as-is for those depending on it.  Please move to trunk.
