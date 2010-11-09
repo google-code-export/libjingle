@@ -1,0 +1,19 @@
+The information on this page addresses an issue reported by libjingle users that sometime, the connection will be dropped if the client has been set idle for awhile.
+
+= Introduction =
+
+Some users have reported that if a connected client has been set idle for sometime, it'll be disconnected (put to offline) without any log-out request from libjingle.
+
+There is a small workaround to resolve this issue which is to keep sending "keepalives" request to the server periodically. 
+
+= Details =
+
+The following is the sample code:
+
+void
+YourClientClass::DoKeepAlive() {
+  buzz::XmppClient \* client = app_->GetClient();
+  if (client) {
+    client->SendRaw(" "); // Just send a space.
+  }
+}
