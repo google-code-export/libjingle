@@ -1,5 +1,5 @@
+#summary The information on this page addresses an issue reported by libjingle users that sometime, the connection will be dropped if the client has been set idle for awhile.
 #labels Phase-Implementation
-The information on this page addresses an issue reported by libjingle users that sometime, the connection will be dropped if the client has been set idle for awhile.
 
 == Introduction ==
 
