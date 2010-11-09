@@ -12,7 +12,7 @@ The following is the sample code:
 
 {{{
 void
-YourClientClass::DoKeepAlive() {
+YourClientUIClass::DoKeepAlive() {
   buzz::XmppClient* client = YourLibjingleApp->GetClient();
   if (client) {
     client->SendRaw(" "); // Just send a space.
