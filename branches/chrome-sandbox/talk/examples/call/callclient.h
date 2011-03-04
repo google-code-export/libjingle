@@ -38,9 +38,6 @@
 #include "talk/xmpp/xmppclient.h"
 #include "talk/examples/call/status.h"
 #include "talk/examples/call/console.h"
-#ifdef USE_TALK_SOUND
-#include "talk/sound/soundsystemfactory.h"
-#endif
 
 namespace buzz {
 class PresencePushTask;
@@ -92,7 +89,7 @@ class CallClient: public sigslot::has_slots<> {
     auto_accept_ = auto_accept;
   }
   void SetPmucDomain(const std::string &pmuc_domain) {
-      pmuc_domain_ = pmuc_domain;
+    pmuc_domain_ = pmuc_domain;
   }
   void SetConsole(Console *console) {
     console_ = console;
@@ -171,6 +168,7 @@ class CallClient: public sigslot::has_slots<> {
   buzz::XmppClient* xmpp_client_;
   talk_base::Thread* worker_thread_;
   talk_base::NetworkManager* network_manager_;
+  talk_base::PacketSocketFactory* socket_factory_;
   cricket::PortAllocator* port_allocator_;
   cricket::SessionManager* session_manager_;
   cricket::SessionManagerTask* session_manager_task_;
@@ -199,9 +197,6 @@ class CallClient: public sigslot::has_slots<> {
   cricket::SignalingProtocol initial_protocol_;
   cricket::SecureMediaPolicy secure_policy_;
   std::string last_sent_to_;
-#ifdef USE_TALK_SOUND
-  cricket::SoundSystemFactory* sound_system_factory_;
-#endif
 };
 
 #endif  // TALK_EXAMPLES_CALL_CALLCLIENT_H_

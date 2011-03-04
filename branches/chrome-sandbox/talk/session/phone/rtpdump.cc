@@ -262,9 +262,9 @@ void RtpDumpLoopReader::UpdateDumpPacket(RtpDumpPacket* packet) {
 
   if (packet->IsValidRtpPacket()) {
     // Get the old RTP sequence number and timestamp.
-    uint16 sequence;
+    uint16 sequence = 0;
     packet->GetRtpSeqNum(&sequence);
-    uint32 timestamp;
+    uint32 timestamp = 0;
     packet->GetRtpTimestamp(&timestamp);
     // Increase the RTP sequence number and timestamp.
     sequence += loop_count_ * rtp_seq_num_increase_;

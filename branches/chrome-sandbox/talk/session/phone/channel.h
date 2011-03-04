@@ -69,7 +69,8 @@ enum {
   MSG_SENDINTRAFRAME = 19,
   MSG_REQUESTINTRAFRAME = 20,
   MSG_RTPPACKET = 22,
-  MSG_RTCPPACKET = 23
+  MSG_RTCPPACKET = 23,
+  MSG_CHANNEL_ERROR = 24
 };
 
 // BaseChannel contains logic common to voice and video, including
@@ -83,7 +84,7 @@ class BaseChannel
               MediaChannel* channel, BaseSession* session,
               const std::string& content_name,
               TransportChannel* transport_channel);
-  ~BaseChannel();
+  virtual ~BaseChannel();
 
   talk_base::Thread* worker_thread() const { return worker_thread_; }
   BaseSession* session() const { return session_; }
@@ -94,6 +95,7 @@ class BaseChannel
   TransportChannel* rtcp_transport_channel() const {
     return rtcp_transport_channel_;
   }
+  bool enabled() const { return enabled_; }
   bool secure() const { return srtp_filter_.IsActive(); }
 
   // Channel control
@@ -136,7 +138,6 @@ class BaseChannel
   MediaEngine* media_engine() const { return media_engine_; }
   virtual MediaChannel* media_channel() const { return media_channel_; }
   void set_rtcp_transport_channel(TransportChannel* transport);
-  bool enabled() const { return enabled_; }
   bool writable() const { return writable_; }
   bool has_codec() const { return has_codec_; }
   void set_has_codec(bool has_codec) { has_codec_ = has_codec; }
@@ -149,6 +150,7 @@ class BaseChannel
                    talk_base::MessageData *pdata = NULL);
   void Clear(uint32 id = talk_base::MQID_ANY,
              talk_base::MessageList* removed = NULL);
+  void FlushRtcpMessages();
 
   // NetworkInterface implementation, called by MediaEngine
   virtual bool SendPacket(talk_base::Buffer* packet);
@@ -290,6 +292,11 @@ class VoiceChannel : public BaseChannel {
   int GetOutputLevel_w();
   void GetActiveStreams_w(AudioInfo::StreamList* actives);
 
+  // Signal errors from VoiceMediaChannel.  Arguments are:
+  //     ssrc(uint32), and error(VoiceMediaChannel::Error).
+  sigslot::signal3<VoiceChannel*, uint32, VoiceMediaChannel::Error>
+      SignalMediaError;
+
  private:
   struct SetRingbackToneMessageData : public talk_base::MessageData {
     SetRingbackToneMessageData(const void* b, int l)
@@ -345,6 +352,8 @@ class VoiceChannel : public BaseChannel {
   virtual void OnMediaMonitorUpdate(
       VoiceMediaChannel *media_channel, const VoiceMediaInfo& info);
   void OnAudioMonitorUpdate(AudioMonitor *monitor, const AudioInfo& info);
+  void OnVoiceChannelError(uint32 ssrc, VoiceMediaChannel::Error error);
+  void SendLastMediaError();
 
   static const int kEarlyMediaTimeout = 1000;
   bool received_media_;
@@ -382,6 +391,9 @@ class VideoChannel : public BaseChannel {
   bool SendIntraFrame();
   bool RequestIntraFrame();
 
+  sigslot::signal3<VideoChannel*, uint32, VideoMediaChannel::Error>
+      SignalMediaError;
+
  private:
   // overrides from BaseChannel
   virtual void ChangeState();
@@ -417,6 +429,8 @@ class VideoChannel : public BaseChannel {
       SocketMonitor *monitor, const std::vector<ConnectionInfo> &infos);
   virtual void OnMediaMonitorUpdate(
       VideoMediaChannel *media_channel, const VideoMediaInfo& info);
+  void OnVideoChannelError(uint32 ssrc, VideoMediaChannel::Error error);
+
   VoiceChannel *voice_channel_;
   VideoRenderer *renderer_;
   talk_base::scoped_ptr<VideoMediaMonitor> media_monitor_;
