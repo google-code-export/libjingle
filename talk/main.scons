@@ -188,7 +188,7 @@ win_dbg_env = win_env.Clone(
 )
 
 win_dbg_env.Prepend(
-  CCFLAGS=[
+  CCFLAGS = [
       '/ZI',     # enable debugging
       '/Od',     # disable optimizations
       '/MTd',    # link with LIBCMTD.LIB debug lib
@@ -197,6 +197,21 @@ win_dbg_env.Prepend(
 )
 
 envs.append(win_dbg_env)
+
+win_coverage_env = win_dbg_env.Clone(
+  tools = ['code_coverage'],
+  BUILD_TYPE = 'coverage',
+  BUILD_TYPE_DESCRIPTION = 'Windows code coverage build',
+  BUILD_GROUPS = ['all'],
+)
+
+win_coverage_env.Append(
+  CPPDEFINES = [
+    'COVERAGE_ENABLED',
+  ],
+)
+
+envs.append(win_coverage_env)
 
 win_opt_env = win_env.Clone(
   BUILD_TYPE = 'opt',
@@ -285,6 +300,7 @@ mac_env.Append(
     'SystemConfiguration',
     'OpenGL',
     'CoreAudio',
+    'Quartz',
     'QuickTime',
     'Cocoa',
     'QTKit',
@@ -334,9 +350,7 @@ linux_common_env.Append(
   CPPDEFINES = [
     'LINUX',
     'HAVE_GLIB',
-    # TODO() Enable once we figure out multiple defines with gips lib
-    # Also consider other linux flags:  64bit, no-strict-aliasing, wrap, etc
-    #'USE_TALK_SOUND',
+#   'HAVE_DBUS_GLIB',
   ],
   CCFLAGS = [
     # TODO: Some or all of this may be desirable for Mac too.
@@ -469,6 +483,7 @@ if win_env.Bit('vsproj'):
 
   # Solution and target projects
   s = vs_env.ComponentVSSolution(
+    # 'libjingle',  # Please uncomment this line if you build VS proj files.
     ['all_libraries', 'all_programs', 'all_test_programs'],
     projects = [p],
   )

@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2004--2005, Google Inc.
+ * Copyright 2011, Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,30 +25,33 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef TALK_SESSION_PHONE_CRYPTOPARAMS_H_
-#define TALK_SESSION_PHONE_CRYPTOPARAMS_H_
+#ifndef TALK_BASE_PACKETSOCKETFACTORY_H_
+#define TALK_BASE_PACKETSOCKETFACTORY_H_
 
-#include <string>
+#include "talk/base/proxyinfo.h"
 
-namespace cricket {
+namespace talk_base {
 
-// Parameters for SRTP negotiation, as described in RFC 4568.
-struct CryptoParams {
-  CryptoParams() : tag(0) {}
-  CryptoParams(int t, const std::string& cs,
-               const std::string& kp, const std::string& sp)
-      : tag(t), cipher_suite(cs), key_params(kp), session_params(sp) {}
+class AsyncPacketSocket;
 
-  bool Matches(const CryptoParams& params) const {
-    return (tag == params.tag && cipher_suite == params.cipher_suite);
-  }
+class PacketSocketFactory {
+ public:
+  PacketSocketFactory() { }
+  virtual ~PacketSocketFactory() { }
 
-  int tag;
-  std::string cipher_suite;
-  std::string key_params;
-  std::string session_params;
+  virtual AsyncPacketSocket* CreateUdpSocket(
+      const SocketAddress& address, int min_port, int max_port) = 0;
+  virtual AsyncPacketSocket* CreateServerTcpSocket(
+      const SocketAddress& local_address, int min_port, int max_port,
+      bool listen, bool ssl) = 0;
+  virtual AsyncPacketSocket* CreateClientTcpSocket(
+      const SocketAddress& local_address, const SocketAddress& remote_address,
+      const ProxyInfo& proxy_info, const std::string& user_agent, bool ssl) = 0;
+
+ private:
+  DISALLOW_EVIL_CONSTRUCTORS(PacketSocketFactory);
 };
 
-}  // namespace cricket
+}  // namespace talk_base
 
-#endif  // TALK_SESSION_PHONE_CRYPTOPARAMS_H_
+#endif  // TALK_BASE_PACKETSOCKETFACTORY_H_

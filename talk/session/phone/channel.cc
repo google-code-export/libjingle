@@ -43,6 +43,24 @@ struct PacketMessageData : public talk_base::MessageData {
   talk_base::Buffer packet;
 };
 
+struct VoiceChannelErrorMessageData : public talk_base::MessageData {
+  VoiceChannelErrorMessageData(uint32 in_ssrc,
+                               VoiceMediaChannel::Error in_error)
+      : ssrc(in_ssrc),
+        error(in_error) {}
+  uint32 ssrc;
+  VoiceMediaChannel::Error error;
+};
+
+struct VideoChannelErrorMessageData : public talk_base::MessageData {
+  VideoChannelErrorMessageData(uint32 in_ssrc,
+                               VideoMediaChannel::Error in_error)
+      : ssrc(in_ssrc),
+        error(in_error) {}
+  uint32 ssrc;
+  VideoMediaChannel::Error error;
+};
+
 static const char* PacketType(bool rtcp) {
   return (!rtcp) ? "RTP" : "RTCP";
 }
@@ -101,6 +119,7 @@ BaseChannel::BaseChannel(talk_base::Thread* thread, MediaEngine* media_engine,
 BaseChannel::~BaseChannel() {
   ASSERT(worker_thread_ == talk_base::Thread::Current());
   StopConnectionMonitor();
+  FlushRtcpMessages();  // Send any outstanding RTCP packets.
   Clear();  // eats any outstanding messages or packets
   // We must destroy the media channel before the transport channel, otherwise
   // the media channel may try to send on the dead transport channel. NULLing
@@ -365,32 +384,34 @@ void BaseChannel::HandlePacket(bool rtcp, talk_base::Buffer* packet) {
 
 void BaseChannel::OnSessionState(BaseSession* session,
                                  BaseSession::State state) {
-  // TODO: tear down the call via session->SetError() if the
-  // SetXXXXDescription calls fail.
   const MediaContentDescription* content = NULL;
   switch (state) {
     case Session::STATE_SENTINITIATE:
       content = GetFirstContent(session->local_description());
-      if (content) {
-        SetLocalContent(content, CA_OFFER);
+      if (content && !SetLocalContent(content, CA_OFFER)) {
+        LOG(LS_ERROR) << "Failure in SetLocalContent with CA_OFFER";
+        session->SetError(BaseSession::ERROR_CONTENT);
       }
       break;
     case Session::STATE_SENTACCEPT:
       content = GetFirstContent(session->local_description());
-      if (content) {
-        SetLocalContent(content, CA_ANSWER);
+      if (content && !SetLocalContent(content, CA_ANSWER)) {
+        LOG(LS_ERROR) << "Failure in SetLocalContent with CA_ANSWER";
+        session->SetError(BaseSession::ERROR_CONTENT);
       }
       break;
     case Session::STATE_RECEIVEDINITIATE:
       content = GetFirstContent(session->remote_description());
-      if (content) {
-        SetRemoteContent(content, CA_OFFER);
+      if (content && !SetRemoteContent(content, CA_OFFER)) {
+        LOG(LS_ERROR) << "Failure in SetRemoteContent with CA_OFFER";
+        session->SetError(BaseSession::ERROR_CONTENT);
       }
       break;
     case Session::STATE_RECEIVEDACCEPT:
       content = GetFirstContent(session->remote_description());
-      if (content) {
-        SetRemoteContent(content, CA_ANSWER);
+      if (content && !SetRemoteContent(content, CA_ANSWER)) {
+        LOG(LS_ERROR) << "Failure in SetRemoteContent with CA_ANSWER";
+        session->SetError(BaseSession::ERROR_CONTENT);
       }
       break;
     default:
@@ -578,6 +599,18 @@ void BaseChannel::Clear(uint32 id, talk_base::MessageList* removed) {
   worker_thread_->Clear(this, id, removed);
 }
 
+void BaseChannel::FlushRtcpMessages() {
+  // Flush all remaining RTCP messages. This should only be called in
+  // destructor.
+  ASSERT(talk_base::Thread::Current() == worker_thread_);
+  talk_base::MessageList rtcp_messages;
+  Clear(MSG_RTCPPACKET, &rtcp_messages);
+  for (talk_base::MessageList::iterator it = rtcp_messages.begin();
+       it != rtcp_messages.end(); ++it) {
+    Send(MSG_RTCPPACKET, it->pdata);
+  }
+}
+
 VoiceChannel::VoiceChannel(talk_base::Thread* thread,
                            MediaEngine* media_engine,
                            VoiceMediaChannel* media_channel,
@@ -593,6 +626,9 @@ VoiceChannel::VoiceChannel(talk_base::Thread* thread,
   // Can't go in BaseChannel because certain session states will
   // trigger pure virtual functions, such as GetFirstContent().
   OnSessionState(session, session->state());
+
+  media_channel->SignalMediaError.connect(
+      this, &VoiceChannel::OnVoiceChannelError);
 }
 
 VoiceChannel::~VoiceChannel() {
@@ -692,8 +728,10 @@ void VoiceChannel::OnChannelRead(TransportChannel* channel,
   // If we were playing out our local ringback, make sure it is stopped to
   // prevent it from interfering with the incoming media.
   if (!received_media_) {
-    received_media_ = false;
-    PlayRingbackTone_w(false, false);
+    if (!PlayRingbackTone_w(false, false)) {
+      LOG(LS_ERROR) << "Failed to stop ringback tone.";
+      SendLastMediaError();
+    }
   }
 }
 
@@ -701,13 +739,19 @@ void VoiceChannel::ChangeState() {
   // render incoming data if we are the active call
   // we receive data on the default channel and multiplexed streams
   bool recv = enabled();
-  media_channel()->SetPlayout(recv);
+  if (!media_channel()->SetPlayout(recv)) {
+    SendLastMediaError();
+  }
 
   // send outgoing data if we are the active call, have the
   // remote party's codec, and have a writable transport
   // we only send data on the default channel
   bool send = enabled() && has_codec() && writable();
-  media_channel()->SetSend(send ? SEND_MICROPHONE : SEND_NOTHING);
+  SendFlags send_flag = send ? SEND_MICROPHONE : SEND_NOTHING;
+  if (!media_channel()->SetSend(send_flag)) {
+    LOG(LS_ERROR) << "Failed to SetSend " << send_flag << " on voice channel";
+    SendLastMediaError();
+  }
 
   LOG(LS_INFO) << "Changing voice state, recv=" << recv << " send=" << send;
 }
@@ -769,7 +813,10 @@ bool VoiceChannel::SetRemoteContent_w(const MediaContentDescription* content,
     ret = media_channel()->SetSendCodecs(audio->codecs());
   }
 
-  int audio_options = audio->conference_mode() ? OPT_CONFERENCE : 0;
+  int audio_options = 0;
+  if (audio->conference_mode()) {
+    audio_options |= OPT_CONFERENCE;
+  }
   if (!media_channel()->SetOptions(audio_options)) {
     // Log an error on failure, but don't abort the call.
     LOG(LS_ERROR) << "Failed to set voice channel options";
@@ -850,6 +897,13 @@ void VoiceChannel::OnMessage(talk_base::Message *pmsg) {
       data->result = PressDTMF_w(data->digit, data->playout);
       break;
     }
+    case MSG_CHANNEL_ERROR: {
+      VoiceChannelErrorMessageData* data =
+          static_cast<VoiceChannelErrorMessageData*>(pmsg->pdata);
+      SignalMediaError(this, data->ssrc, data->error);
+      delete data;
+      break;
+    }
 
     default:
       BaseChannel::OnMessage(pmsg);
@@ -873,6 +927,13 @@ void VoiceChannel::OnAudioMonitorUpdate(AudioMonitor* monitor,
   SignalAudioMonitor(this, info);
 }
 
+void VoiceChannel::OnVoiceChannelError(
+    uint32 ssrc, VoiceMediaChannel::Error error) {
+  VoiceChannelErrorMessageData *data = new VoiceChannelErrorMessageData(
+      ssrc, error);
+  signaling_thread()->Post(this, MSG_CHANNEL_ERROR, data);
+}
+
 VideoChannel::VideoChannel(talk_base::Thread* thread,
                            MediaEngine* media_engine,
                            VideoMediaChannel* media_channel,
@@ -891,6 +952,15 @@ VideoChannel::VideoChannel(talk_base::Thread* thread,
   // trigger pure virtual functions, such as GetFirstContent()
   OnSessionState(session, session->state());
 
+  media_channel->SignalMediaError.connect(
+      this, &VideoChannel::OnVideoChannelError);
+}
+
+void VoiceChannel::SendLastMediaError() {
+  uint32 ssrc;
+  VoiceMediaChannel::Error error;
+  media_channel()->GetLastMediaError(&ssrc, &error);
+  SignalMediaError(this, ssrc, error);
 }
 
 VideoChannel::~VideoChannel() {
@@ -926,13 +996,19 @@ void VideoChannel::ChangeState() {
   // render incoming data if we are the active call
   // we receive data on the default channel and multiplexed streams
   bool recv = enabled();
-  media_channel()->SetRender(recv);
+  if (!media_channel()->SetRender(recv)) {
+    LOG(LS_ERROR) << "Failed to SetRender on video channel";
+    // TODO: Report error back to server.
+  }
 
   // send outgoing data if we are the active call, have the
   // remote party's codec, and have a writable transport
   // we only send data on the default channel
   bool send = enabled() && has_codec() && writable();
-  media_channel()->SetSend(send);
+  if (!media_channel()->SetSend(send)) {
+    LOG(LS_ERROR) << "Failed to SetSend on video channel";
+    // TODO: Report error back to server.
+  }
 
   LOG(LS_INFO) << "Changing video state, recv=" << recv << " send=" << send;
 }
@@ -1053,10 +1129,16 @@ void VideoChannel::OnMessage(talk_base::Message *pmsg) {
     case MSG_REQUESTINTRAFRAME:
       RequestIntraFrame_w();
       break;
-
-  default:
-    BaseChannel::OnMessage(pmsg);
-    break;
+    case MSG_CHANNEL_ERROR: {
+      const VideoChannelErrorMessageData* data =
+          static_cast<VideoChannelErrorMessageData*>(pmsg->pdata);
+      SignalMediaError(this, data->ssrc, data->error);
+      delete data;
+      break;
+    }
+    default:
+      BaseChannel::OnMessage(pmsg);
+      break;
   }
 }
 
@@ -1071,5 +1153,12 @@ void VideoChannel::OnMediaMonitorUpdate(
   SignalMediaMonitor(this, info);
 }
 
+
+void VideoChannel::OnVideoChannelError(uint32 ssrc,
+                                       VideoMediaChannel::Error error) {
+  VideoChannelErrorMessageData* data = new VideoChannelErrorMessageData(
+      ssrc, error);
+  signaling_thread()->Post(this, MSG_CHANNEL_ERROR, data);
+}
 
 }  // namespace cricket

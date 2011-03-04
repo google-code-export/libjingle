@@ -187,6 +187,24 @@ struct VideoMediaInfo {
 
 class VoiceMediaChannel : public MediaChannel {
  public:
+  enum Error {
+    ERROR_NONE = 0,                       // No error.
+    ERROR_OTHER,                          // Other errors.
+    ERROR_REC_DEVICE_OPEN_FAILED = 100,   // Could not open mic.
+    ERROR_REC_DEVICE_MUTED,               // Mic was muted by OS.
+    ERROR_REC_DEVICE_SILENT,              // No background noise picked up.
+    ERROR_REC_DEVICE_SATURATION,          // Mic input is clipping.
+    ERROR_REC_DEVICE_REMOVED,             // Mic was removed while active.
+    ERROR_REC_RUNTIME_ERROR,              // Processing is encountering errors.
+    ERROR_REC_SRTP_ERROR,                 // Generic SRTP failure.
+    ERROR_PLAY_DEVICE_OPEN_FAILED = 200,  // Could not open playout.
+    ERROR_PLAY_DEVICE_MUTED,              // Playout muted by OS.
+    ERROR_PLAY_DEVICE_REMOVED,            // Playout removed while active.
+    ERROR_PLAY_RUNTIME_ERROR,             // Errors in voice processing.
+    ERROR_PLAY_SRTP_ERROR,                // Generic SRTP failure.
+    ERROR_PLAY_SRTP_AUTH_FAILED,          // Failed to authenticate packets.
+  };
+
   VoiceMediaChannel() {}
   virtual ~VoiceMediaChannel() {}
   // Sets the codecs/payload types to be used for incoming media.
@@ -213,6 +231,16 @@ class VoiceMediaChannel : public MediaChannel {
   virtual bool PressDTMF(int event, bool playout) = 0;
   // Gets quality stats for the channel.
   virtual bool GetStats(VoiceMediaInfo* info) = 0;
+  // Gets last reported error for this media channel.
+  virtual void GetLastMediaError(uint32* ssrc,
+                                 VoiceMediaChannel::Error* error) {
+    ASSERT(error != NULL);
+    *error = ERROR_NONE;
+  }
+
+  // Signal errors from MediaChannel.  Arguments are:
+  //     ssrc(uint32), and error(VoiceMediaChannel::Error).
+  sigslot::signal2<uint32, VoiceMediaChannel::Error> SignalMediaError;
 };
 
 // Represents a YUV420 (a.k.a. I420) video frame.
@@ -390,6 +418,18 @@ class NullVideoRenderer : public VideoRenderer {
 
 class VideoMediaChannel : public MediaChannel {
  public:
+  enum Error {
+    ERROR_NONE = 0,                       // No error.
+    ERROR_OTHER,                          // Other errors.
+    ERROR_REC_DEVICE_OPEN_FAILED = 100,   // Could not open camera.
+    ERROR_REC_DEVICE_NO_DEVICE,           // No camera.
+    ERROR_REC_DEVICE_IN_USE,              // Device is in already use.
+    ERROR_REC_DEVICE_REMOVED,             // Device is removed.
+    ERROR_REC_SRTP_ERROR,                 // Generic sender SRTP failure.
+    ERROR_PLAY_SRTP_ERROR = 200,          // Generic receiver SRTP failure.
+    ERROR_PLAY_SRTP_AUTH_FAILED,          // Failed to authenticate packets.
+  };
+
   VideoMediaChannel() { renderer_ = NULL; }
   virtual ~VideoMediaChannel() {}
   // Sets the codecs/payload types to be used for incoming media.
@@ -415,6 +455,7 @@ class VideoMediaChannel : public MediaChannel {
   // Reuqest each of the remote senders to send an intra frame.
   virtual bool RequestIntraFrame() = 0;
 
+  sigslot::signal2<uint32, Error> SignalMediaError;
 
  protected:
   VideoRenderer *renderer_;
