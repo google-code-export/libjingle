@@ -831,7 +831,6 @@ void Connection::OnConnectionRequestTimeout(ConnectionRequest* request) {
       break;
     }
   }
-  ASSERT(failures > 0);
   LOG_JV(sev, this) << "Timing-out STUN ping " << request->id()
                     << " after " << request->Elapsed()
                     << " ms, failures=" << failures;
