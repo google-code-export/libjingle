@@ -43,7 +43,7 @@ class AsyncTCPSocket : public AsyncPacketSocket {
   explicit AsyncTCPSocket(AsyncSocket* socket, bool listen);
   virtual ~AsyncTCPSocket();
 
-  virtual SocketAddress GetLocalAddress(bool* allocated) const;
+  virtual bool GetLocalAddress(SocketAddress* address) const;
   virtual SocketAddress GetRemoteAddress() const;
   virtual int Send(const void *pv, size_t cb);
   virtual int SendTo(const void *pv, size_t cb, const SocketAddress& addr);

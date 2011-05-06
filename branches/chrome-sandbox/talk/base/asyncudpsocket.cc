@@ -62,10 +62,9 @@ AsyncUDPSocket::~AsyncUDPSocket() {
   delete [] buf_;
 }
 
-SocketAddress AsyncUDPSocket::GetLocalAddress(bool* allocated) const {
-  if (allocated)
-    *allocated = true;
-  return socket_->GetLocalAddress();
+bool AsyncUDPSocket::GetLocalAddress(SocketAddress* address) const {
+  *address = socket_->GetLocalAddress();
+  return true;
 }
 
 SocketAddress AsyncUDPSocket::GetRemoteAddress() const {

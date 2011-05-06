@@ -29,7 +29,6 @@
 
 #include <string>
 
-#include "talk/base/basicpacketsocketfactory.h"
 #include "talk/base/helpers.h"
 #include "talk/base/logging.h"
 #include "talk/base/network.h"
@@ -51,22 +50,8 @@
 #include "talk/session/phone/devicemanager.h"
 #include "talk/session/phone/mediaengine.h"
 #include "talk/session/phone/mediasessionclient.h"
+#include "talk/session/phone/videorendererfactory.h"
 #include "talk/xmpp/constants.h"
-
-
-class NullRenderer : public cricket::VideoRenderer {
- public:
-  explicit NullRenderer(const char* s) : s_(s) {}
- private:
-  bool SetSize(int width, int height, int reserved) {
-    LOG(LS_INFO) << "Video size for " << s_ << ": " << width << "x" << height;
-    return true;
-  }
-  bool RenderFrame(const cricket::VideoFrame *frame) {
-    return true;
-  }
-  const char* s_;
-};
 
 namespace {
 
@@ -175,11 +160,7 @@ void CallClient::ParseLine(const std::string& line) {
     }
   } else if (call_) {
     if (command == "hangup") {
-      // TODO: do more shutdown here, move to Terminate()
       call_->Terminate();
-      call_ = NULL;
-      session_ = NULL;
-      console_->SetPrompt(NULL);
     } else if (command == "mute") {
       call_->Mute(true);
     } else if (command == "unmute") {
@@ -336,19 +317,16 @@ void CallClient::InitPhone() {
   // dispatched by it.
   worker_thread_->Start();
 
-  // TODO: It looks like we are leaking many
-  // objects. E.g. |network_manager_| and |socket_factory_| are never
-  // deleted.
+  // TODO: It looks like we are leaking many objects. E.g.
+  // |network_manager_| is never deleted.
 
   network_manager_ = new talk_base::NetworkManager();
-  socket_factory_ = new talk_base::BasicPacketSocketFactory(worker_thread_);
 
   // TODO: Decide if the relay address should be specified here.
   talk_base::SocketAddress stun_addr("stun.l.google.com", 19302);
-  port_allocator_ = new cricket::BasicPortAllocator(
-      network_manager_, socket_factory_, stun_addr,
-      talk_base::SocketAddress(), talk_base::SocketAddress(),
-      talk_base::SocketAddress());
+  port_allocator_ =  new cricket::BasicPortAllocator(
+      network_manager_, stun_addr, talk_base::SocketAddress(),
+      talk_base::SocketAddress(), talk_base::SocketAddress());
 
   if (portallocator_flags_ != 0) {
     port_allocator_->set_flags(portallocator_flags_);
@@ -376,6 +354,7 @@ void CallClient::InitPhone() {
       media_engine_,
       new cricket::DeviceManager());
   media_client_->SignalCallCreate.connect(this, &CallClient::OnCallCreate);
+  media_client_->SignalCallDestroy.connect(this, &CallClient::OnCallDestroy);
   media_client_->SignalDevicesChange.connect(this,
                                              &CallClient::OnDevicesChange);
   media_client_->set_secure(secure_policy_);
@@ -392,10 +371,6 @@ void CallClient::OnSessionCreate(cricket::Session* session, bool initiate) {
 
 void CallClient::OnCallCreate(cricket::Call* call) {
   call->SignalSessionState.connect(this, &CallClient::OnSessionState);
-  if (call->video()) {
-    local_renderer_ = new NullRenderer("local");
-    remote_renderer_ = new NullRenderer("remote");
-  }
 }
 
 void CallClient::OnSessionState(cricket::Call* call,
@@ -407,11 +382,23 @@ void CallClient::OnSessionState(cricket::Call* call,
     call_ = call;
     session_ = session;
     incoming_call_ = true;
+    if (call->video()) {
+      local_renderer_ =
+          cricket::VideoRendererFactory::CreateGuiVideoRenderer(160, 100);
+      remote_renderer_ =
+          cricket::VideoRendererFactory::CreateGuiVideoRenderer(160, 100);
+    }
     cricket::CallOptions options;
     if (auto_accept_) {
       Accept(options);
     }
   } else if (state == cricket::Session::STATE_SENTINITIATE) {
+    if (call->video()) {
+      local_renderer_ =
+          cricket::VideoRendererFactory::CreateGuiVideoRenderer(160, 100);
+      remote_renderer_ =
+          cricket::VideoRendererFactory::CreateGuiVideoRenderer(160, 100);
+    }
     console_->Print("calling...");
   } else if (state == cricket::Session::STATE_RECEIVEDACCEPT) {
     console_->Print("call answered");
@@ -583,22 +570,10 @@ void CallClient::MakeCallTo(const std::string& name,
 
 void CallClient::PlaceCall(const buzz::Jid& jid,
                            const cricket::CallOptions& options) {
-  media_client_->SignalCallDestroy.connect(
-      this, &CallClient::OnCallDestroy);
   if (!call_) {
     call_ = media_client_->CreateCall();
     console_->SetPrompt(jid.Str().c_str());
     session_ = call_->InitiateSession(jid, options);
-    if (options.is_muc) {
-      // If people in this room are already in a call, must add all their
-      // streams.
-      buzz::Muc::MemberMap& members = mucs_[jid]->members();
-      for (buzz::Muc::MemberMap::iterator elem = members.begin();
-           elem != members.end();
-           ++elem) {
-        AddStream(elem->second.audio_src_id(), elem->second.video_src_id());
-      }
-    }
   }
   media_client_->SetFocus(call_);
   if (call_->video()) {
@@ -632,20 +607,6 @@ void CallClient::OnFoundVoicemailJid(const buzz::Jid& to,
 
 void CallClient::OnVoicemailJidError(const buzz::Jid& to) {
   console_->Printf("Unable to voicemail %s.\n", to.Str().c_str());
-}
-
-void CallClient::AddStream(uint32 audio_src_id, uint32 video_src_id) {
-  if (audio_src_id || video_src_id) {
-    console_->Printf("Adding stream (%u, %u)\n", audio_src_id, video_src_id);
-    call_->AddStream(session_, audio_src_id, video_src_id);
-  }
-}
-
-void CallClient::RemoveStream(uint32 audio_src_id, uint32 video_src_id) {
-  if (audio_src_id || video_src_id) {
-    console_->Printf("Removing stream (%u, %u)\n", audio_src_id, video_src_id);
-    call_->RemoveStream(session_, audio_src_id, video_src_id);
-  }
 }
 
 void CallClient::Accept(const cricket::CallOptions& options) {
@@ -765,47 +726,8 @@ void CallClient::OnMucStatusUpdate(const buzz::Jid& jid,
 
     ASSERT(elem != muc->members().end());
 
-    // If user had src-ids, they have the left the room without explicitly
-    // hanging-up; must tear down the stream if in a call to this room.
-    if (call_ && session_->remote_name() == muc->jid().Str()) {
-      RemoveStream(elem->second.audio_src_id(), elem->second.video_src_id());
-    }
-
     // Remove them from the room.
     muc->members().erase(elem);
-  } else {
-    // Either user has joined or something changed about them.
-    // Note: The [] operator here will create a new entry if it does not
-    // exist, which is what we want.
-    buzz::MucStatus& member_status(
-        muc->members()[status.jid().resource()]);
-    if (call_ && session_->remote_name() == muc->jid().Str()) {
-      // We are in a call to this muc. Must potentially update our streams.
-      // The following code will correctly update our streams regardless of
-      // whether the SSRCs have been removed, added, or changed and regardless
-      // of whether that has been done to both or just one. This relies on the
-      // fact that AddStream/RemoveStream do nothing for SSRC arguments that are
-      // zero.
-      uint32 remove_audio_src_id = 0;
-      uint32 remove_video_src_id = 0;
-      uint32 add_audio_src_id = 0;
-      uint32 add_video_src_id = 0;
-      if (member_status.audio_src_id() != status.audio_src_id()) {
-        remove_audio_src_id = member_status.audio_src_id();
-        add_audio_src_id = status.audio_src_id();
-      }
-      if (member_status.video_src_id() != status.video_src_id()) {
-        remove_video_src_id = member_status.video_src_id();
-        add_video_src_id = status.video_src_id();
-      }
-      // Remove the old SSRCs, if any.
-      RemoveStream(remove_audio_src_id, remove_video_src_id);
-      // Add the new SSRCs, if any.
-      AddStream(add_audio_src_id, add_video_src_id);
-    }
-    // Update the status. This will use the compiler-generated copy
-    // constructor, which is perfectly adequate for this class.
-    member_status = status;
   }
 }
 

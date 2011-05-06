@@ -137,8 +137,13 @@ const std::string STR_TO("to");
 const std::string STR_BOTH("both");
 const std::string STR_REMOVE("remove");
 
-const std::string STR_UNAVAILABLE("unavailable");
-
+const std::string STR_TYPE("type");
+const std::string STR_NAME("name");
+const std::string STR_ID("id");
+const std::string STR_JID("jid");
+const std::string STR_SUBSCRIPTION("subscription");
+const std::string STR_ASK("ask");
+const std::string STR_X("x");
 const std::string STR_GOOGLE_COM("google.com");
 const std::string STR_GMAIL_COM("gmail.com");
 const std::string STR_GOOGLEMAIL_COM("googlemail.com");
@@ -146,12 +151,13 @@ const std::string STR_DEFAULT_DOMAIN("default.talk.google.com");
 const std::string STR_TALK_GOOGLE_COM("talk.google.com");
 const std::string STR_TALKX_L_GOOGLE_COM("talkx.l.google.com");
 
-const std::string STR_X("x");
-
 #ifdef FEATURE_ENABLE_VOICEMAIL
 const std::string STR_VOICEMAIL("voicemail");
 const std::string STR_OUTGOINGVOICEMAIL("outgoingvoicemail");
 #endif
+
+const std::string STR_UNAVAILABLE("unavailable");
+
 
 const QName QN_STREAM_STREAM(true, NS_STREAM, STR_STREAM);
 const QName QN_STREAM_FEATURES(true, NS_STREAM, "features");
@@ -296,13 +302,6 @@ const QName QN_VCARD_NUMBER(true, NS_VCARD, "NUMBER");
 
 const QName QN_XML_LANG(true, NS_XML, "lang");
 
-const std::string STR_TYPE("type");
-const std::string STR_ID("id");
-const std::string STR_NAME("name");
-const std::string STR_JID("jid");
-const std::string STR_SUBSCRIPTION("subscription");
-const std::string STR_ASK("ask");
-
 const QName QN_ENCODING(true, STR_EMPTY, STR_ENCODING);
 const QName QN_VERSION(true, STR_EMPTY, STR_VERSION);
 const QName QN_TO(true, STR_EMPTY, "to");
@@ -317,6 +316,7 @@ const QName QN_ORDER(true, STR_EMPTY, "order");
 const QName QN_MECHANISM(true, STR_EMPTY, "mechanism");
 const QName QN_ASK(true, STR_EMPTY, "ask");
 const QName QN_JID(true, STR_EMPTY, "jid");
+const QName QN_NICK(true, STR_EMPTY, "nick");
 const QName QN_SUBSCRIPTION(true, STR_EMPTY, "subscription");
 const QName QN_TITLE1(true, STR_EMPTY, "title1");
 const QName QN_TITLE2(true, STR_EMPTY, "title2");
@@ -325,7 +325,6 @@ const QName QN_SOURCE(true, STR_EMPTY, "source");
 const QName QN_XMLNS_CLIENT(true, NS_XMLNS, STR_CLIENT);
 const QName QN_XMLNS_SERVER(true, NS_XMLNS, STR_SERVER);
 const QName QN_XMLNS_STREAM(true, NS_XMLNS, STR_STREAM);
-
 
 
 // Presence
@@ -348,8 +347,23 @@ const QName QN_INVITE_NAME(true, NS_GOOGLE_INVITE, "name");
 const QName QN_INVITE_SUBJECT(true, NS_GOOGLE_INVITE, "subject");
 const QName QN_INVITE_MESSAGE(true, NS_GOOGLE_INVITE, "body");
 
-// JEP 0030
+// PubSub: http://xmpp.org/extensions/xep-0060.html
+const std::string NS_PUBSUB("http://jabber.org/protocol/pubsub");
+const QName QN_PUBSUB(true, NS_PUBSUB, "pubsub");
+const QName QN_PUBSUB_ITEMS(true, NS_PUBSUB, "items");
+const QName QN_PUBSUB_ITEM(true, NS_PUBSUB, "item");
+
+const std::string NS_PUBSUB_EVENT("http://jabber.org/protocol/pubsub#event");
 const QName QN_NODE(true, STR_EMPTY, "node");
+const QName QN_PUBSUB_EVENT(true, NS_PUBSUB_EVENT, "event");
+const QName QN_PUBSUB_EVENT_ITEMS(true, NS_PUBSUB_EVENT, "items");
+const QName QN_PUBSUB_EVENT_ITEM(true, NS_PUBSUB_EVENT, "item");
+const QName QN_PUBSUB_EVENT_RETRACT(true, NS_PUBSUB_EVENT, "retract");
+
+
+
+
+// JEP 0030
 const QName QN_CATEGORY(true, STR_EMPTY, "category");
 const QName QN_VAR(true, STR_EMPTY, "var");
 const std::string NS_DISCO_INFO("http://jabber.org/protocol/disco#info");
@@ -361,11 +375,25 @@ const QName QN_DISCO_FEATURE(true, NS_DISCO_INFO, "feature");
 const QName QN_DISCO_ITEMS_QUERY(true, NS_DISCO_ITEMS, "query");
 const QName QN_DISCO_ITEM(true, NS_DISCO_ITEMS, "item");
 
+
+// JEP 0045
+const std::string NS_MUC("http://jabber.org/protocol/muc");
+const QName QN_MUC_X(true, NS_MUC, "x");
+const QName QN_MUC_ITEM(true, NS_MUC, "item");
+const QName QN_MUC_AFFILIATION(true, NS_MUC, "affiliation");
+const QName QN_MUC_ROLE(true, NS_MUC, "role");
+const std::string STR_AFFILIATION_NONE("none");
+const std::string STR_ROLE_PARTICIPANT("participant");
+
+const std::string NS_MUC_OWNER("http://jabber.org/protocol/muc#owner");
+const QName QN_MUC_OWNER_QUERY(true, NS_MUC_OWNER, "query");
+
 const std::string NS_MUC_USER("http://jabber.org/protocol/muc#user");
 const QName QN_MUC_USER_CONTINUE(true, NS_MUC_USER, "continue");
 const QName QN_MUC_USER_X(true, NS_MUC_USER, "x");
 const QName QN_MUC_USER_ITEM(true, NS_MUC_USER, "item");
 const QName QN_MUC_USER_STATUS(true, NS_MUC_USER, "status");
+
 
 // JEP 0115
 const std::string NS_CAPS("http://jabber.org/protocol/caps");

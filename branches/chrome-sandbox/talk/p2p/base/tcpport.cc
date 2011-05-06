@@ -45,16 +45,18 @@ TCPPort::TCPPort(talk_base::Thread* thread,
 }
 
 bool TCPPort::Init() {
-  // Treat failure to create or bind a TCP socket as fatal.  This
-  // should never happen.
-  socket_ = factory_->CreateServerTcpSocket(
-      talk_base::SocketAddress(ip_, 0), min_port_, max_port_, allow_listen_,
-      false /* ssl */);
-  if (!socket_) {
-    LOG_J(LS_ERROR, this) << "TCP socket creation failed.";
-    return false;
+  if (allow_listen_) {
+    // Treat failure to create or bind a TCP socket as fatal.  This
+    // should never happen.
+    socket_ = factory_->CreateServerTcpSocket(
+        talk_base::SocketAddress(ip_, 0), min_port_, max_port_,
+        false /* ssl */);
+    if (!socket_) {
+      LOG_J(LS_ERROR, this) << "TCP socket creation failed.";
+      return false;
+    }
+    socket_->SignalNewConnection.connect(this, &TCPPort::OnNewConnection);
   }
-  socket_->SignalNewConnection.connect(this, &TCPPort::OnNewConnection);
   return true;
 }
 
@@ -93,17 +95,18 @@ Connection* TCPPort::CreateConnection(const Candidate& address,
 }
 
 void TCPPort::PrepareAddress() {
-  if (!allow_listen_) {
-    LOG_J(LS_INFO, this) << "Not listening due to firewall restrictions.";
-  }
-  // Note: We still add the address, since otherwise the remote side won't
-  // recognize our incoming TCP connections.
-  bool allocated;
-  talk_base::SocketAddress address = socket_->GetLocalAddress(&allocated);
-  if (allocated) {
-    AddAddress(address, "tcp", true);
+  if (socket_) {
+    talk_base::SocketAddress address;
+    if (socket_->GetLocalAddress(&address)) {
+      AddAddress(address, "tcp", true);
+    } else {
+      socket_->SignalAddressReady.connect(this, &TCPPort::OnAddressReady);
+    }
   } else {
-    socket_->SignalAddressReady.connect(this, &TCPPort::OnAddresReady);
+    LOG_J(LS_INFO, this) << "Not listening due to firewall restrictions.";
+    // Note: We still add the address, since otherwise the remote side won't
+    // recognize our incoming TCP connections.
+    AddAddress(talk_base::SocketAddress(ip_, 0), "tcp", true);
   }
 }
 
@@ -130,8 +133,20 @@ int TCPPort::SendTo(const void* data, size_t size,
   return sent;
 }
 
+int TCPPort::GetOption(talk_base::Socket::Option opt, int* value) {
+  if (socket_) {
+    return socket_->GetOption(opt, value);
+  } else {
+    return SOCKET_ERROR;
+  }
+}
+
 int TCPPort::SetOption(talk_base::Socket::Option opt, int value) {
-  return socket_->SetOption(opt, value);
+  if (socket_) {
+    return socket_->SetOption(opt, value);
+  } else {
+    return SOCKET_ERROR;
+  }
 }
 
 int TCPPort::GetError() {
@@ -173,8 +188,8 @@ void TCPPort::OnReadPacket(talk_base::AsyncPacketSocket* socket,
   Port::OnReadPacket(data, size, remote_addr);
 }
 
-void TCPPort::OnAddresReady(talk_base::AsyncPacketSocket* socket,
-                            const talk_base::SocketAddress& address) {
+void TCPPort::OnAddressReady(talk_base::AsyncPacketSocket* socket,
+                             const talk_base::SocketAddress& address) {
   AddAddress(address, "tcp", true);
 }
 
@@ -190,8 +205,9 @@ TCPConnection::TCPConnection(TCPPort* port, const Candidate& candidate,
         candidate.address(), port->proxy(), port->user_agent(),
         candidate.protocol() == "ssltcp");
     if (socket_) {
-      LOG_J(LS_VERBOSE, this) << "Connecting from "
-                              << socket_->GetLocalAddress(NULL).ToString()
+      talk_base::SocketAddress address;
+      socket_->GetLocalAddress(&address);
+      LOG_J(LS_VERBOSE, this) << "Connecting from " << address.ToString()
                               << " to " << candidate.address().ToString();
       set_connected(false);
       socket_->SignalConnect.connect(this, &TCPConnection::OnConnect);
@@ -201,7 +217,9 @@ TCPConnection::TCPConnection(TCPPort* port, const Candidate& candidate,
     }
   } else {
     // Incoming connections should match the network address.
-    ASSERT(socket_->GetLocalAddress(NULL).ip() == port->ip_);
+    talk_base::SocketAddress address;
+    socket_->GetLocalAddress(&address);
+    ASSERT(address.ip() == port->ip_);
   }
 
   if (socket_) {

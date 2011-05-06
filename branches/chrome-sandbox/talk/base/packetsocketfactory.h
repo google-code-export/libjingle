@@ -43,7 +43,10 @@ class PacketSocketFactory {
       const SocketAddress& address, int min_port, int max_port) = 0;
   virtual AsyncPacketSocket* CreateServerTcpSocket(
       const SocketAddress& local_address, int min_port, int max_port,
-      bool listen, bool ssl) = 0;
+      bool ssl) = 0;
+
+  // TODO: |proxy_info| and |user_agent| should be set
+  // per-factory and not when socket is created.
   virtual AsyncPacketSocket* CreateClientTcpSocket(
       const SocketAddress& local_address, const SocketAddress& remote_address,
       const ProxyInfo& proxy_info, const std::string& user_agent, bool ssl) = 0;

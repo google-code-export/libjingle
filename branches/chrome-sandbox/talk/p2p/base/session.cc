@@ -644,9 +644,6 @@ void Session::OnIncomingMessage(const SessionMessage& msg) {
     case ACTION_TRANSPORT_ACCEPT:
       valid = OnTransportAcceptMessage(msg, &error);
       break;
-    case ACTION_NOTIFY:
-      valid = OnNotifyMessage(msg, &error);
-      break;
     case ACTION_UPDATE:
       valid = OnUpdateMessage(msg, &error);
       break;
@@ -789,9 +786,8 @@ bool Session::OnRejectMessage(const SessionMessage& msg, MessageError* error) {
   return true;
 }
 
-// Only used by app/win32/fileshare.cc.
 bool Session::OnInfoMessage(const SessionMessage& msg) {
-  SignalInfoMessage(this, CopyOfXmlChildren(msg.action_elem));
+  SignalInfoMessage(this, msg.action_elem);
   return true;
 }
 
@@ -831,27 +827,10 @@ bool Session::OnTransportAcceptMessage(const SessionMessage& msg,
   return true;
 }
 
-bool Session::OnNotifyMessage(const SessionMessage& msg,
-                              MessageError* error) {
-  SessionNotify notify;
-  if (!ParseSessionNotify(msg.action_elem, &notify, error)) {
-    return false;
-  }
-
-  SignalMediaSources(notify.nickname_to_sources);
-
-  return true;
-}
-
 bool Session::OnUpdateMessage(const SessionMessage& msg,
                               MessageError* error) {
-  SessionUpdate update;
-  if (!ParseSessionUpdate(msg.action_elem, &update, error)) {
-    return false;
-  }
-
-  // TODO: Process this message appropriately.
-
+  // TODO: Once someone needs it, parse the message
+  // into a data structure and signal out.
   return true;
 }
 
@@ -938,16 +917,6 @@ bool Session::WriteSessionAction(
                               elems, error);
 }
 
-bool Session::SetVideoView(
-    const std::vector<VideoViewRequest>& view_requests) {
-  SessionView view;
-  SessionError error;
-
-  view.view_requests = view_requests;
-
-  return !SendViewMessage(view, &error);
-}
-
 bool Session::SendAcceptMessage(const SessionDescription* sdesc,
                                 SessionError* error) {
   XmlElements elems;
@@ -995,12 +964,6 @@ bool Session::WriteSessionAction(SignalingProtocol protocol,
 
   return WriteTransportInfos(protocol, tinfos, parsers,
                              elems, error);
-}
-
-bool Session::SendViewMessage(const SessionView& view, SessionError* error) {
-  XmlElements elems;
-  WriteSessionView(view, &elems);
-  return SendMessage(ACTION_VIEW, elems, error);
 }
 
 bool Session::ResendAllTransportInfoMessages(SessionError* error) {

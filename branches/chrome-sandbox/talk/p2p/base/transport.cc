@@ -61,6 +61,7 @@ struct ChannelParams {
   cricket::TransportChannelImpl* channel;
   cricket::Candidate* candidate;
 };
+// TODO: Merge ChannelParams and ChannelMessage.
 typedef talk_base::TypedMessageData<ChannelParams*> ChannelMessage;
 
 enum {
@@ -74,8 +75,9 @@ enum {
   MSG_READSTATE = 8,
   MSG_WRITESTATE = 9,
   MSG_REQUESTSIGNALING = 10,
-  MSG_ONCHANNELCANDIDATEREADY = 11,
-  MSG_CONNECTING = 12,
+  MSG_CANDIDATEREADY = 11,
+  MSG_ROUTECHANGE = 12,
+  MSG_CONNECTING = 13,
 };
 
 Transport::Transport(talk_base::Thread* signaling_thread,
@@ -111,6 +113,7 @@ TransportChannelImpl* Transport::CreateChannel_w(
   impl->SignalRequestSignaling.connect(
       this, &Transport::OnChannelRequestSignaling);
   impl->SignalCandidateReady.connect(this, &Transport::OnChannelCandidateReady);
+  impl->SignalRouteChange.connect(this, &Transport::OnChannelRouteChange);
 
   talk_base::CritScope cs(&crit_);
   ASSERT(channels_.find(name) == channels_.end());
@@ -180,7 +183,7 @@ void Transport::ConnectChannels_w() {
     return;
   connect_requested_ = true;
   signaling_thread()->Post(
-      this, MSG_ONCHANNELCANDIDATEREADY, NULL);
+      this, MSG_CANDIDATEREADY, NULL);
   CallChannels_w(&TransportChannelImpl::Connect);
   if (!channels_.empty()) {
     signaling_thread()->Post(this, MSG_CONNECTING, NULL);
@@ -372,7 +375,7 @@ void Transport::OnChannelCandidateReady(TransportChannelImpl* channel,
   // We hold any messages until the client lets us connect.
   if (connect_requested_) {
     signaling_thread()->Post(
-        this, MSG_ONCHANNELCANDIDATEREADY, NULL);
+        this, MSG_CANDIDATEREADY, NULL);
   }
 }
 
@@ -391,6 +394,19 @@ void Transport::OnChannelCandidateReady_s() {
   if (!candidates.empty()) {
     SignalCandidatesReady(this, candidates);
   }
+}
+
+void Transport::OnChannelRouteChange(TransportChannel* channel,
+                                     const Candidate& remote_candidate) {
+  ASSERT(worker_thread()->IsCurrent());
+  ChannelParams* params = new ChannelParams(new Candidate(remote_candidate));
+  signaling_thread()->Post(this, MSG_ROUTECHANGE, new ChannelMessage(params));
+}
+
+void Transport::OnChannelRouteChange_s(const std::string& name,
+                                       const Candidate& remote_candidate) {
+  ASSERT(signaling_thread()->IsCurrent());
+  SignalRouteChange(this, name, remote_candidate);
 }
 
 void Transport::OnMessage(talk_base::Message* msg) {
@@ -440,8 +456,17 @@ void Transport::OnMessage(talk_base::Message* msg) {
   case MSG_REQUESTSIGNALING:
     OnChannelRequestSignaling_s();
     break;
-  case MSG_ONCHANNELCANDIDATEREADY:
+  case MSG_CANDIDATEREADY:
     OnChannelCandidateReady_s();
+    break;
+  case MSG_ROUTECHANGE:
+    {
+      ChannelMessage* channel_msg = static_cast<ChannelMessage*>(msg->pdata);
+      ChannelParams* params = channel_msg->data();
+      OnChannelRouteChange_s(params->name, *params->candidate);
+      delete params;
+      delete channel_msg;
+    }
     break;
   }
 }

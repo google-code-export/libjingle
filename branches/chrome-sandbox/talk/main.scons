@@ -71,6 +71,11 @@ if platform.architecture()[0] == "64bit":
 
 DeclareBit('use_static_openssl', 'Build OpenSSL as a static library')
 
+DeclareBit('have_dbus_glib',
+           'Whether the build system has the dbus-glib-1 package')
+DeclareBit('have_libpulse',
+           'Whether the build system has the libpulse package')
+
 
 #-------------------------------------------------------------------------------
 # W I N D O W S
@@ -83,7 +88,7 @@ win_env = root_env.Clone(
     'directx_9_0_c',
     #'grid_builder',
     'midl',
-    'target_platform_windows',
+    'target_platform_windows'
   ],
   # Don't use default vc80 midl.exe.  It doesn't understand vista_sdk idl files.
   MIDL = '$PLATFORM_SDK_VISTA_6_0_DIR/Bin/midl.exe ',
@@ -342,6 +347,7 @@ envs.append(mac_opt_env)
 linux_common_env = posix_env.Clone(
   tools = [
     'target_platform_linux',
+    'talk_libjingle',
     #'talk_linux',
   ],
 )
@@ -349,8 +355,6 @@ linux_common_env = posix_env.Clone(
 linux_common_env.Append(
   CPPDEFINES = [
     'LINUX',
-    'HAVE_GLIB',
-#   'HAVE_DBUS_GLIB',
   ],
   CCFLAGS = [
     # TODO: Some or all of this may be desirable for Mac too.
@@ -382,6 +386,12 @@ linux_common_env.Replace(
   RPATH = [],
 )
 
+# Enable the optional DBus-GLib code if the build machine has the required
+# dependency.
+linux_common_env.EnableFeatureWherePackagePresent('have_dbus_glib',
+                                                  'HAVE_DBUS_GLIB',
+                                                  'dbus-glib-1')
+
 #-------------------------------------------------------------------------------
 # L I N U X -- T R A D I T I O N A L
 #
@@ -394,6 +404,12 @@ linux_env = linux_common_env.Clone()
 # product would end up being broken on any computer with a different version
 # installed. So instead we build it ourself and statically link to it.
 linux_env.SetBits('use_static_openssl')
+# Enable the optional PulseAudio code if the build machine has the required
+# dependency. (Not doing this for linux_common_env because we don't want
+# PulseAudio used on ChromeOS.)
+linux_env.EnableFeatureWherePackagePresent('have_libpulse',
+                                           'HAVE_LIBPULSE',
+                                           'libpulse')
 linux_env.Append(
   CCFLAGS = [
     '-m32',

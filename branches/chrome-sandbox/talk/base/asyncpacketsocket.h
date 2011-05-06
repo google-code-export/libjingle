@@ -41,9 +41,9 @@ class AsyncPacketSocket : public sigslot::has_slots<> {
   virtual ~AsyncPacketSocket() { }
 
   // Returns current local address. If port or IP address is not
-  // assigned yet, then they set to 0 in the result and |allocated| is
-  // set to false. Otherwise |allocated| is set to true.
-  virtual SocketAddress GetLocalAddress(bool* allocated) const = 0;
+  // assigned yet, then false is returned. Otherwise |address| is set
+  // to local address and true is returned.
+  virtual bool GetLocalAddress(SocketAddress* address) const = 0;
 
   // Returns remote address. Returns zeroes if this is not a client TCP socket.
   virtual SocketAddress GetRemoteAddress() const = 0;

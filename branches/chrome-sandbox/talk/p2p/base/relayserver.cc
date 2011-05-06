@@ -196,10 +196,9 @@ void RelayServer::OnInternalPacket(
     const talk_base::SocketAddress& remote_addr) {
 
   // Get the address of the connection we just received on.
-  bool allocated;
-  talk_base::SocketAddressPair ap(
-      remote_addr, socket->GetLocalAddress(&allocated));
-  ASSERT(allocated);
+  talk_base::SocketAddress address;
+  socket->GetLocalAddress(&address);
+  talk_base::SocketAddressPair ap(remote_addr, address);
   ASSERT(!ap.destination().IsAny());
 
   // If this did not come from an existing connection, it should be a STUN
@@ -243,10 +242,9 @@ void RelayServer::OnExternalPacket(
     const talk_base::SocketAddress& remote_addr) {
 
   // Get the address of the connection we just received on.
-  bool allocated;
-  talk_base::SocketAddressPair ap(
-      remote_addr, socket->GetLocalAddress(&allocated));
-  ASSERT(allocated);
+  talk_base::SocketAddress address;
+  socket->GetLocalAddress(&address);
+  talk_base::SocketAddressPair ap(remote_addr, address);
   ASSERT(!ap.destination().IsAny());
 
   // If this connection already exists, then forward the traffic.
@@ -443,10 +441,8 @@ void RelayServer::HandleStunAllocate(
   response.AddAttribute(magic_cookie_attr);
 
   size_t index = rand() % external_sockets_.size();
-  bool allocated;
-  talk_base::SocketAddress ext_addr =
-      external_sockets_[index]->GetLocalAddress(&allocated);
-  ASSERT(allocated);
+  talk_base::SocketAddress ext_addr;
+  external_sockets_[index]->GetLocalAddress(&ext_addr);
 
   StunAddressAttribute* addr_attr =
       StunAttribute::CreateAddress(STUN_ATTR_MAPPED_ADDRESS);
@@ -492,10 +488,9 @@ void RelayServer::HandleStunSend(
     // Create a new connection to establish the relationship with this binding.
     ASSERT(external_sockets_.size() == 1);
     talk_base::AsyncPacketSocket* socket = external_sockets_[0];
-    bool allocated;
-    talk_base::SocketAddressPair ap(
-        ext_addr, socket->GetLocalAddress(&allocated));
-    ASSERT(allocated);
+    talk_base::SocketAddress address;
+    socket->GetLocalAddress(&address);
+    talk_base::SocketAddressPair ap(ext_addr, address);
     ext_conn = new RelayServerConnection(int_conn->binding(), ap, socket);
     ext_conn->binding()->AddExternalConnection(ext_conn);
     AddConnection(ext_conn);

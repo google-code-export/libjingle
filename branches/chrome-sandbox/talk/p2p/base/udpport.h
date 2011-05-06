@@ -75,8 +75,8 @@ class UDPPort : public Port {
   virtual int SendTo(const void* data, size_t size,
                      const talk_base::SocketAddress& remote_addr, bool payload);
 
-  void OnAddresReady(talk_base::AsyncPacketSocket* socket,
-                     const talk_base::SocketAddress& address);
+  void OnAddressReady(talk_base::AsyncPacketSocket* socket,
+                      const talk_base::SocketAddress& address);
 
   // Dispatches the given packet to the port or connection as appropriate.
   void OnReadPacket(talk_base::AsyncPacketSocket* socket,

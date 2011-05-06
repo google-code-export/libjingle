@@ -28,6 +28,7 @@
 #include <string>
 #include <vector>
 
+#include "talk/base/basicpacketsocketfactory.h"
 #include "talk/base/common.h"
 #include "talk/base/helpers.h"
 #include "talk/base/host.h"
@@ -164,32 +165,40 @@ class AllocationSequence : public talk_base::MessageHandler {
 
 
 // BasicPortAllocator
-
 BasicPortAllocator::BasicPortAllocator(
     talk_base::NetworkManager* network_manager,
     talk_base::PacketSocketFactory* socket_factory)
     : network_manager_(network_manager),
-      socket_factory_(socket_factory),
-      best_writable_phase_(-1),
-      allow_tcp_listen_(true) {
+      socket_factory_(socket_factory) {
   ASSERT(socket_factory_ != NULL);
+  Construct();
+}
+
+BasicPortAllocator::BasicPortAllocator(
+    talk_base::NetworkManager* network_manager)
+    : network_manager_(network_manager),
+      socket_factory_(NULL) {
+  Construct();
 }
 
 BasicPortAllocator::BasicPortAllocator(
     talk_base::NetworkManager* network_manager,
-    talk_base::PacketSocketFactory* socket_factory,
     const talk_base::SocketAddress& stun_address,
     const talk_base::SocketAddress& relay_address_udp,
     const talk_base::SocketAddress& relay_address_tcp,
     const talk_base::SocketAddress& relay_address_ssl)
     : network_manager_(network_manager),
-      socket_factory_(socket_factory),
+      socket_factory_(NULL),
       stun_address_(stun_address),
       relay_address_udp_(relay_address_udp),
       relay_address_tcp_(relay_address_tcp),
-      relay_address_ssl_(relay_address_ssl),
-      best_writable_phase_(-1),
-      allow_tcp_listen_(true) {
+      relay_address_ssl_(relay_address_ssl) {
+  Construct();
+}
+
+void BasicPortAllocator::Construct() {
+  best_writable_phase_ = -1;
+  allow_tcp_listen_ = true;
 }
 
 BasicPortAllocator::~BasicPortAllocator() {
@@ -222,7 +231,8 @@ BasicPortAllocatorSession::BasicPortAllocatorSession(
     const std::string &session_type)
     : PortAllocatorSession(allocator->flags()), allocator_(allocator),
       name_(name), session_type_(session_type), network_thread_(NULL),
-      allocation_started_(false), running_(false) {
+      socket_factory_(allocator->socket_factory()), allocation_started_(false),
+      running_(false) {
 }
 
 BasicPortAllocatorSession::~BasicPortAllocatorSession() {
@@ -242,6 +252,11 @@ BasicPortAllocatorSession::~BasicPortAllocatorSession() {
 
 void BasicPortAllocatorSession::GetInitialPorts() {
   network_thread_ = talk_base::Thread::Current();
+  if (!socket_factory_) {
+    owned_socket_factory_.reset(
+        new talk_base::BasicPacketSocketFactory(network_thread_));
+    socket_factory_ = owned_socket_factory_.get();
+  }
 
   network_thread_->Post(this, MSG_CONFIG_START);
 
@@ -664,7 +679,7 @@ void AllocationSequence::CreateUDPPorts() {
   }
 
   Port* port = UDPPort::Create(session_->network_thread(),
-                               session_->allocator()->socket_factory(),
+                               session_->socket_factory(),
                                network_, ip_,
                                session_->allocator()->min_port(),
                                session_->allocator()->max_port());
@@ -679,7 +694,7 @@ void AllocationSequence::CreateTCPPorts() {
   }
 
   Port* port = TCPPort::Create(session_->network_thread(),
-                               session_->allocator()->socket_factory(),
+                               session_->socket_factory(),
                                network_, ip_,
                                session_->allocator()->min_port(),
                                session_->allocator()->max_port(),
@@ -704,7 +719,7 @@ void AllocationSequence::CreateStunPorts() {
   }
 
   Port* port = StunPort::Create(session_->network_thread(),
-                                session_->allocator()->socket_factory(),
+                                session_->socket_factory(),
                                 network_, ip_,
                                 session_->allocator()->min_port(),
                                 session_->allocator()->max_port(),
@@ -732,7 +747,7 @@ void AllocationSequence::CreateRelayPorts() {
   for (relay = config_->relays.begin();
        relay != config_->relays.end(); ++relay) {
     RelayPort* port = RelayPort::Create(session_->network_thread(),
-                                        session_->allocator()->socket_factory(),
+                                        session_->socket_factory(),
                                         network_, ip_,
                                         session_->allocator()->min_port(),
                                         session_->allocator()->max_port(),

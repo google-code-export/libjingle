@@ -74,8 +74,6 @@ struct RosterItem {
   std::string status;
 };
 
-class NullRenderer;
-
 class CallClient: public sigslot::has_slots<> {
  public:
   explicit CallClient(buzz::XmppClient* xmpp_client);
@@ -168,7 +166,6 @@ class CallClient: public sigslot::has_slots<> {
   buzz::XmppClient* xmpp_client_;
   talk_base::Thread* worker_thread_;
   talk_base::NetworkManager* network_manager_;
-  talk_base::PacketSocketFactory* socket_factory_;
   cricket::PortAllocator* port_allocator_;
   cricket::SessionManager* session_manager_;
   cricket::SessionManagerTask* session_manager_task_;
@@ -181,8 +178,8 @@ class CallClient: public sigslot::has_slots<> {
   bool incoming_call_;
   bool auto_accept_;
   std::string pmuc_domain_;
-  NullRenderer* local_renderer_;
-  NullRenderer* remote_renderer_;
+  cricket::VideoRenderer* local_renderer_;
+  cricket::VideoRenderer* remote_renderer_;
 
   buzz::Status my_status_;
   buzz::PresencePushTask* presence_push_;
