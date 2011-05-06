@@ -35,8 +35,12 @@
 
 namespace talk_base {
 
-BasicPacketSocketFactory::BasicPacketSocketFactory(
-    Thread* thread)
+BasicPacketSocketFactory::BasicPacketSocketFactory()
+    : thread_(Thread::Current()),
+      socket_factory_(NULL) {
+}
+
+BasicPacketSocketFactory::BasicPacketSocketFactory(Thread* thread)
     : thread_(thread),
       socket_factory_(NULL) {
 }
@@ -68,8 +72,7 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateUdpSocket(
 }
 
 AsyncPacketSocket* BasicPacketSocketFactory::CreateServerTcpSocket(
-    const SocketAddress& local_address, int min_port, int max_port,
-    bool listen, bool ssl) {
+    const SocketAddress& local_address, int min_port, int max_port, bool ssl) {
   talk_base::AsyncSocket* socket =
       socket_factory()->CreateAsyncSocket(SOCK_STREAM);
   if (!socket) {
@@ -87,6 +90,10 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateServerTcpSocket(
   if (ssl) {
     socket = new talk_base::AsyncSSLSocket(socket);
   }
+
+  // Set TCP_NODELAY (via OPT_NODELAY) for improved performance.
+  // See http://go/gtalktcpnodelayexperiment
+  socket->SetOption(talk_base::Socket::OPT_NODELAY, 1);
 
   return new talk_base::AsyncTCPSocket(socket, true);
 }
@@ -130,7 +137,14 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateClientTcpSocket(
   }
 
   // Finally, wrap that socket in a TCP packet socket.
-  return new talk_base::AsyncTCPSocket(socket, false);
+  talk_base::AsyncTCPSocket* tcp_socket =
+      new talk_base::AsyncTCPSocket(socket, false);
+
+  // Set TCP_NODELAY (via OPT_NODELAY) for improved performance.
+  // See http://go/gtalktcpnodelayexperiment
+  tcp_socket->SetOption(talk_base::Socket::OPT_NODELAY, 1);
+
+  return tcp_socket;
 }
 
 int BasicPacketSocketFactory::BindSocket(
@@ -150,10 +164,12 @@ int BasicPacketSocketFactory::BindSocket(
 }
 
 SocketFactory* BasicPacketSocketFactory::socket_factory() {
-  if (thread_)
+  if (thread_) {
+    ASSERT(thread_ == Thread::Current());
     return thread_->socketserver();
-  else
+  } else {
     return socket_factory_;
+  }
 }
 
 }  // namespace talk_base

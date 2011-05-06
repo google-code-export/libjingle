@@ -133,6 +133,9 @@ class BaseChannel
     talk_base::CritScope cs(&sink_critical_section_);
     return sent_media_sink_;
   }
+  void set_srtp_signal_silent_time(uint32 silent_time) {
+    srtp_filter_.set_signal_silent_time(silent_time);
+  }
 
  protected:
   MediaEngine* media_engine() const { return media_engine_; }
@@ -143,6 +146,7 @@ class BaseChannel
   void set_has_codec(bool has_codec) { has_codec_ = has_codec; }
   bool muted() const { return muted_; }
   talk_base::Thread* signaling_thread() { return session_->signaling_thread(); }
+  SrtpFilter* srtp_filter() { return &srtp_filter_; }
 
   void Send(uint32 id, talk_base::MessageData *pdata = NULL);
   void Post(uint32 id, talk_base::MessageData *pdata = NULL);
@@ -159,8 +163,11 @@ class BaseChannel
 
   // From TransportChannel
   void OnWritableState(TransportChannel* channel);
-  void OnChannelRead(TransportChannel* channel, const char *data, size_t len);
+  virtual void OnChannelRead(TransportChannel* channel, const char* data,
+                             size_t len);
 
+  bool PacketIsRtcp(const TransportChannel* channel, const char* data,
+                    size_t len);
   bool SendPacket(bool rtcp, talk_base::Buffer* packet);
   void HandlePacket(bool rtcp, talk_base::Buffer* packet);
 
@@ -273,7 +280,7 @@ class VoiceChannel : public BaseChannel {
   // own ringing sound
   sigslot::signal1<VoiceChannel*> SignalEarlyMediaTimeout;
 
-  bool PlayRingbackTone(bool play, bool loop);
+  bool PlayRingbackTone(uint32 ssrc, bool play, bool loop);
   bool PressDTMF(int digit, bool playout);
 
   // Monitoring functions
@@ -301,17 +308,21 @@ class VoiceChannel : public BaseChannel {
   struct SetRingbackToneMessageData : public talk_base::MessageData {
     SetRingbackToneMessageData(const void* b, int l)
         : buf(b),
-          len(l) {
+          len(l),
+          result(false) {
     }
     const void* buf;
     int len;
+    bool result;
   };
   struct PlayRingbackToneMessageData : public talk_base::MessageData {
-    PlayRingbackToneMessageData(bool p, bool l)
-        : play(p),
+    PlayRingbackToneMessageData(uint32 s, bool p, bool l)
+        : ssrc(s),
+          play(p),
           loop(l),
           result(false) {
     }
+    uint32 ssrc;
     bool play;
     bool loop;
     bool result;
@@ -341,8 +352,8 @@ class VoiceChannel : public BaseChannel {
   void AddStream_w(uint32 ssrc);
   void RemoveStream_w(uint32 ssrc);
 
-  void SetRingbackTone_w(const void* buf, int len);
-  bool PlayRingbackTone_w(bool play, bool loop);
+  bool SetRingbackTone_w(const void* buf, int len);
+  bool PlayRingbackTone_w(uint32 ssrc, bool play, bool loop);
   void HandleEarlyMediaTimeout();
   bool PressDTMF_w(int digit, bool playout);
 
@@ -354,6 +365,7 @@ class VoiceChannel : public BaseChannel {
   void OnAudioMonitorUpdate(AudioMonitor *monitor, const AudioInfo& info);
   void OnVoiceChannelError(uint32 ssrc, VoiceMediaChannel::Error error);
   void SendLastMediaError();
+  void OnSrtpError(uint32 ssrc, SrtpFilter::Mode mode, SrtpFilter::Error error);
 
   static const int kEarlyMediaTimeout = 1000;
   bool received_media_;
@@ -430,6 +442,7 @@ class VideoChannel : public BaseChannel {
   virtual void OnMediaMonitorUpdate(
       VideoMediaChannel *media_channel, const VideoMediaInfo& info);
   void OnVideoChannelError(uint32 ssrc, VideoMediaChannel::Error error);
+  void OnSrtpError(uint32 ssrc, SrtpFilter::Mode mode, SrtpFilter::Error error);
 
   VoiceChannel *voice_channel_;
   VideoRenderer *renderer_;

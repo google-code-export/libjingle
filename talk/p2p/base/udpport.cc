@@ -60,12 +60,11 @@ UDPPort::~UDPPort() {
 }
 
 void UDPPort::PrepareAddress() {
-  bool allocated;
-  talk_base::SocketAddress address = socket_->GetLocalAddress(&allocated);
-  if (allocated) {
+  talk_base::SocketAddress address;
+  if (socket_->GetLocalAddress(&address)) {
     AddAddress(address, "udp", true);
   } else {
-    socket_->SignalAddressReady.connect(this, &UDPPort::OnAddresReady);
+    socket_->SignalAddressReady.connect(this, &UDPPort::OnAddressReady);
   }
 }
 
@@ -98,8 +97,8 @@ int UDPPort::GetError() {
   return error_;
 }
 
-void UDPPort::OnAddresReady(talk_base::AsyncPacketSocket* socket,
-                            const talk_base::SocketAddress& address) {
+void UDPPort::OnAddressReady(talk_base::AsyncPacketSocket* socket,
+                             const talk_base::SocketAddress& address) {
   AddAddress(address, "udp", true);
 }
 

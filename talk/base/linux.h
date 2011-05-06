@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2011, Google Inc.
+ * Copyright 2008, Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -32,6 +32,8 @@
 #include <string>
 #include <map>
 #include <vector>
+
+#include "talk/base/scoped_ptr.h"
 #include "talk/base/stream.h"
 
 namespace talk_base {
@@ -61,9 +63,9 @@ class ConfigParser {
 
   virtual bool Open(const std::string& filename);
   virtual void Attach(StreamInterface* stream);
-  virtual bool Parse(MapVector *key_val_pairs);
-  virtual bool ParseSection(SimpleMap *key_val_pair);
-  virtual bool ParseLine(std::string *key, std::string *value);
+  virtual bool Parse(MapVector* key_val_pairs);
+  virtual bool ParseSection(SimpleMap* key_val_pair);
+  virtual bool ParseLine(std::string* key, std::string* value);
 
  private:
   scoped_ptr<StreamInterface> instream_;
@@ -93,23 +95,30 @@ class ProcCpuInfo {
   virtual bool LoadFromSystem();
 
   // Obtains the number of logical CPU threads and places the value num.
-  virtual bool GetNumCpus(int *num);
+  virtual bool GetNumCpus(int* num);
 
   // Obtains the number of physical CPU cores and places the value num.
-  virtual bool GetNumPhysicalCpus(int *num);
+  virtual bool GetNumPhysicalCpus(int* num);
 
-  // Looks for the CPU proc item with the given name for the given CPU number
-  // and places the string value in result.
-  virtual bool GetCpuStringValue(int cpu_id, const std::string& key,
-                                 std::string *result);
+  // Obtains the CPU family id.
+  virtual bool GetCpuFamily(int* id);
 
-  // Looks for the CPU proc item with the given name for the given CPU number
-  // and places the int value in result.
-  virtual bool GetCpuIntValue(int cpu_id, const std::string& key,
-                              int *result);
+  // Obtains the number of sections in /proc/cpuinfo, which may be greater
+  // than the number of CPUs (e.g. on ARM)
+  virtual bool GetSectionCount(size_t* count);
+
+  // Looks for the CPU proc item with the given name for the given section
+  // number and places the string value in result.
+  virtual bool GetSectionStringValue(size_t section_num, const std::string& key,
+                                     std::string* result);
+
+  // Looks for the CPU proc item with the given name for the given section
+  // number and places the int value in result.
+  virtual bool GetSectionIntValue(size_t section_num, const std::string& key,
+                                  int* result);
 
  private:
-  ConfigParser::MapVector cpu_info_;
+  ConfigParser::MapVector sections_;
 };
 
 // Builds a string containing the info from lsb_release on a single line.

@@ -99,9 +99,8 @@ void StunServer::OnBindingRequest(
   // Tell the user the address that we are sending the response from.
   // This method should not be called if socket address is not
   // allocated yet.
-  bool allocated;
-  talk_base::SocketAddress local_addr = socket_->GetLocalAddress(&allocated);
-  ASSERT(allocated);
+  talk_base::SocketAddress local_addr;
+  socket_->GetLocalAddress(&local_addr);
 
   StunAddressAttribute* source_addr =
       StunAttribute::CreateAddress(STUN_ATTR_SOURCE_ADDRESS);

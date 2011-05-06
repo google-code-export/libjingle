@@ -28,7 +28,6 @@
 #ifndef TALK_BASE_BASICPACKETSOCKETFACTORY_H_
 #define TALK_BASE_BASICPACKETSOCKETFACTORY_H_
 
-#include "talk/base/asyncsocket.h"
 #include "talk/base/packetsocketfactory.h"
 
 namespace talk_base {
@@ -39,6 +38,7 @@ class Thread;
 
 class BasicPacketSocketFactory : public PacketSocketFactory {
  public:
+  BasicPacketSocketFactory();
   explicit BasicPacketSocketFactory(Thread* thread);
   explicit BasicPacketSocketFactory(SocketFactory* socket_factory);
   virtual ~BasicPacketSocketFactory();
@@ -46,8 +46,7 @@ class BasicPacketSocketFactory : public PacketSocketFactory {
   virtual AsyncPacketSocket* CreateUdpSocket(
       const SocketAddress& local_address, int min_port, int max_port);
   virtual AsyncPacketSocket* CreateServerTcpSocket(
-      const SocketAddress& local_address, int min_port, int max_port,
-      bool listen, bool ssl);
+      const SocketAddress& local_address, int min_port, int max_port, bool ssl);
   virtual AsyncPacketSocket* CreateClientTcpSocket(
       const SocketAddress& local_address, const SocketAddress& remote_address,
       const ProxyInfo& proxy_info, const std::string& user_agent, bool ssl);

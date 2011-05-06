@@ -90,7 +90,9 @@ int CompareConnectionCandidates(cricket::Connection* a,
   if (a_pref < b_pref)
     return -1;
 
-  return 0;
+  // If we're still tied at this point, prefer a younger generation.
+  return (a->remote_candidate().generation() + a->port()->generation()) -
+         (b->remote_candidate().generation() + b->port()->generation());
 }
 
 // Compare two connections based on their writability and static preferences.
@@ -167,6 +169,7 @@ P2PTransportChannel::P2PTransportChannel(const std::string &name,
     transport_(transport),
     allocator_(allocator),
     worker_thread_(talk_base::Thread::Current()),
+    incoming_only_(false),
     waiting_for_signaling_(false),
     error_(0),
     best_connection_(NULL),
@@ -280,8 +283,9 @@ void P2PTransportChannel::OnPortReady(PortAllocatorSession *session,
 
   std::vector<RemoteCandidate>::iterator iter;
   for (iter = remote_candidates_.begin(); iter != remote_candidates_.end();
-       ++iter)
+       ++iter) {
     CreateConnection(port, *iter, iter->origin_port(), false);
+  }
 
   SortConnections();
 }
@@ -334,6 +338,8 @@ void P2PTransportChannel::OnUnknownAddress(
   // This remote username exists. Now create connections using this candidate,
   // and resort
 
+  RememberRemoteCandidate(new_remote_candidate, port);
+
   if (CreateConnections(new_remote_candidate, port, true)) {
     // Send the pinger a successful stun response.
     port->SendBindingResponse(stun_msg, address);
@@ -356,11 +362,15 @@ void P2PTransportChannel::OnUnknownAddress(
 void P2PTransportChannel::OnCandidate(const Candidate& candidate) {
   ASSERT(worker_thread_ == talk_base::Thread::Current());
 
-  // Create connections to this remote candidate.
-  CreateConnections(candidate, NULL, false);
+  RememberRemoteCandidate(candidate, NULL);
 
-  // Resort the connections list, which may have new elements.
-  SortConnections();
+  if (!incoming_only_) {
+    // Create connections to this remote candidate.
+    CreateConnections(candidate, NULL, false);
+
+    // Resort the connections list, which may have new elements.
+    SortConnections();
+  }
 }
 
 // Creates connections from all of the ports that we care about to the given
@@ -392,9 +402,6 @@ bool P2PTransportChannel::CreateConnections(const Candidate &remote_candidate,
     if (CreateConnection(origin_port, remote_candidate, origin_port, readable))
       created = true;
   }
-
-  // Remember this remote candidate so that we can add it to future ports.
-  RememberRemoteCandidate(remote_candidate, origin_port);
 
   return created;
 }
@@ -552,6 +559,11 @@ void P2PTransportChannel::SortConnections() {
 
   ConnectionCompare cmp;
   std::stable_sort(connections_.begin(), connections_.end(), cmp);
+  LOG(LS_VERBOSE) << "Sorting available connections:";
+  for (uint32 i = 0; i < connections_.size(); ++i) {
+    LOG(LS_VERBOSE) << connections_[i]->ToString();
+  }
+
   Connection* top_connection = NULL;
   if (connections_.size() > 0)
     top_connection = connections_[0];
@@ -633,7 +645,7 @@ void P2PTransportChannel::SwitchBestConnectionTo(Connection* conn) {
     }
     LOG_J(LS_INFO, this) << "New best connection: "
                          << best_connection_->ToString();
-    SignalRouteChange(this, best_connection_->remote_candidate().address());
+    SignalRouteChange(this, best_connection_->remote_candidate());
   } else {
     LOG_J(LS_INFO, this) << "No best connection";
   }

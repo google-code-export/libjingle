@@ -113,14 +113,6 @@ class DeviceWatcher {
   DeviceManager* manager_;
   void* impl_;
 };
-#elif defined(IOS) || defined(ANDROID)
-// We don't use DeviceWatcher on iOS or Android, so just stub out a noop class.
-class DeviceWatcher {
- public:
-  explicit DeviceWatcher(DeviceManager* dm) {}
-  bool Start() { return true; }
-  void Stop() {}
-};
 #endif
 
 #if !defined(LINUX) && !defined(IOS)
@@ -346,7 +338,10 @@ bool DeviceManager::GetAudioDevicesByPlatform(bool input,
     sound_system_.release();
     return false;
   }
-  int index = 0;
+  // We have to start the index at 1 because GIPS VoiceEngine puts the default
+  // device at index 0, but Enumerate(Capture|Playback)Devices does not include
+  // a locator for the default device.
+  int index = 1;
   for (SoundSystemInterface::SoundDeviceLocatorList::iterator i = list.begin();
        i != list.end();
        ++i, ++index) {

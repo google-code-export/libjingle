@@ -31,9 +31,12 @@
 #include <string>
 #include <vector>
 #include "talk/base/basictypes.h"
+#include "talk/base/stringencode.h"
 #include "talk/xmllite/xmlelement.h"  // Needed to delete ParseError.extra.
 
 namespace cricket {
+
+typedef std::vector<buzz::XmlElement*> XmlElements;
 
 // We decided "bool Parse(in, out*, error*)" is generally the best
 // parse signature.  "out Parse(in)" doesn't allow for errors.
@@ -85,9 +88,28 @@ bool GetXmlAttr(const buzz::XmlElement* elem,
                 const buzz::QName& name, bool def);
 int GetXmlAttr(const buzz::XmlElement* elem,
                const buzz::QName& name, int def);
-void AddXmlAttr(buzz::XmlElement* elem,
-                const buzz::QName& name, int n);
-void SetXmlBody(buzz::XmlElement* elem, uint32 u);
+
+template <class T>
+bool AddXmlAttr(buzz::XmlElement* elem,
+                const buzz::QName& name, const T& val) {
+  std::string buf;
+  if (!talk_base::ToString(val, &buf)) {
+    return false;
+  }
+  elem->AddAttr(name, buf);
+  return true;
+}
+
+template <class T>
+bool SetXmlBody(buzz::XmlElement* elem, const T& val) {
+  std::string buf;
+  if (!talk_base::ToString(val, &buf)) {
+    return false;
+  }
+  elem->SetBodyText(buf);
+  return true;
+}
+
 const buzz::XmlElement* GetXmlChild(const buzz::XmlElement* parent,
                                     const std::string& name);
 bool RequireXmlChild(const buzz::XmlElement* parent,

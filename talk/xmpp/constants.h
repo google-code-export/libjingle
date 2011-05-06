@@ -91,14 +91,6 @@ extern const std::string STR_TO;
 extern const std::string STR_BOTH;
 extern const std::string STR_REMOVE;
 
-extern const std::string STR_MESSAGE;
-extern const std::string STR_BODY;
-extern const std::string STR_PRESENCE;
-extern const std::string STR_STATUS;
-extern const std::string STR_SHOW;
-extern const std::string STR_PRIOIRTY;
-extern const std::string STR_IQ;
-
 extern const std::string STR_TYPE;
 extern const std::string STR_NAME;
 extern const std::string STR_ID;
@@ -119,6 +111,7 @@ extern const std::string STR_OUTGOINGVOICEMAIL;
 #endif
 
 extern const std::string STR_UNAVAILABLE;
+
 
 extern const QName QN_STREAM_STREAM;
 extern const QName QN_STREAM_FEATURES;
@@ -287,6 +280,7 @@ extern const QName QN_ORDER;
 extern const QName QN_MECHANISM;
 extern const QName QN_ASK;
 extern const QName QN_JID;
+extern const QName QN_NICK;
 extern const QName QN_SUBSCRIPTION;
 extern const QName QN_TITLE1;
 extern const QName QN_TITLE2;
@@ -318,9 +312,23 @@ extern const QName QN_INVITE_NAME;
 extern const QName QN_INVITE_SUBJECT;
 extern const QName QN_INVITE_MESSAGE;
 
+// PubSub: http://xmpp.org/extensions/xep-0060.html
+extern const std::string NS_PUBSUB;
+extern const QName QN_PUBSUB;
+extern const QName QN_PUBSUB_ITEMS;
+extern const QName QN_PUBSUB_ITEM;
+
+extern const std::string NS_PUBSUB_EVENT;
+extern const QName QN_NODE;
+extern const QName QN_PUBSUB_EVENT;
+extern const QName QN_PUBSUB_EVENT_ITEMS;
+extern const QName QN_PUBSUB_EVENT_ITEM;
+extern const QName QN_PUBSUB_EVENT_RETRACT;
+
+
+
 
 // JEP 0030
-extern const QName QN_NODE;
 extern const QName QN_CATEGORY;
 extern const QName QN_VAR;
 extern const std::string NS_DISCO_INFO;
@@ -342,6 +350,10 @@ extern const QName QN_MUC_AFFILIATION;
 extern const QName QN_MUC_ROLE;
 extern const std::string STR_AFFILIATION_NONE;
 extern const std::string STR_ROLE_PARTICIPANT;
+
+extern const std::string NS_MUC_OWNER;
+extern const QName QN_MUC_OWNER_QUERY;
+
 extern const std::string NS_MUC_USER;
 extern const QName QN_MUC_USER_CONTINUE;
 extern const QName QN_MUC_USER_X;

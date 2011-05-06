@@ -88,10 +88,9 @@ AsyncTCPSocket::~AsyncTCPSocket() {
   delete [] outbuf_;
 }
 
-SocketAddress AsyncTCPSocket::GetLocalAddress(bool* allocated) const {
-  if (allocated)
-    *allocated = true;
-  return socket_->GetLocalAddress();
+bool AsyncTCPSocket::GetLocalAddress(SocketAddress* address) const {
+  *address = socket_->GetLocalAddress();
+  return true;
 }
 
 SocketAddress AsyncTCPSocket::GetRemoteAddress() const {

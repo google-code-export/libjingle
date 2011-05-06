@@ -67,6 +67,7 @@ class TCPPort : public Port {
 
   virtual void PrepareAddress();
 
+  virtual int GetOption(talk_base::Socket::Option opt, int* value);
   virtual int SetOption(talk_base::Socket::Option opt, int value);
   virtual int GetError();
 
@@ -98,8 +99,8 @@ class TCPPort : public Port {
                     const char* data, size_t size,
                     const talk_base::SocketAddress& remote_addr);
 
-  void OnAddresReady(talk_base::AsyncPacketSocket* socket,
-                     const talk_base::SocketAddress& address);
+  void OnAddressReady(talk_base::AsyncPacketSocket* socket,
+                      const talk_base::SocketAddress& address);
 
   // TODO: Is this still needed?
   bool incoming_only_;

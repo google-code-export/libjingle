@@ -48,15 +48,18 @@ class MagicCamVideoRenderer;
 
 namespace cricket {
 
-const size_t kMinRtpPacketLen = 12;
-const size_t kMinRtcpPacketLen = 4;
-const size_t kMaxRtpPacketLen = 2048;
+const int kMinRtpHeaderExtensionId = 1;
+const int kMaxRtpHeaderExtensionId = 255;
+
+struct RtpHeaderExtension {
+  RtpHeaderExtension(const std::string& u, int i) : uri(u), id(i) {}
+  std::string uri;
+  int id;
+  // TODO: SendRecv direction;
+};
 
 enum VoiceMediaChannelOptions {
   OPT_CONFERENCE = 0x10000,   // tune the audio stream for conference mode
-  OPT_ENERGYLEVEL = 0x20000,  // include the energy level in RTP packets, as
-                              // defined in https://datatracker.ietf.org/drafts/
-                              // draft-lennox-avt-rtp-audio-level-exthdr/
 
 };
 
@@ -97,8 +100,14 @@ class MediaChannel : public sigslot::has_slots<> {
   // Mutes the channel.
   virtual bool Mute(bool on) = 0;
 
-  virtual bool SetRtpExtensionHeaders(bool enable_all) { return true; }
+  // Sets the RTP extension headers and IDs to use when sending RTP.
+  virtual bool SetRecvRtpHeaderExtensions(
+      const std::vector<RtpHeaderExtension>& extensions) = 0;
+  virtual bool SetSendRtpHeaderExtensions(
+      const std::vector<RtpHeaderExtension>& extensions) = 0;
+  // Sets the rate control to use when sending data.
   virtual bool SetSendBandwidth(bool autobw, int bps) = 0;
+  // Sets the media options to use.
   virtual bool SetOptions(int options) = 0;
 
  protected:
@@ -131,6 +140,9 @@ struct VoiceReceiverInfo {
   float fraction_lost;
   int ext_seqnum;
   int jitter_ms;
+  int jitter_buffer_ms;
+  int jitter_buffer_preferred_ms;
+  int delay_estimate_ms;
   int audio_level;
 };
 
@@ -148,6 +160,8 @@ struct VideoSenderInfo {
   int frame_height;
   int framerate_input;
   int framerate_sent;
+  int nominal_bitrate;
+  int preferred_bitrate;
 };
 
 struct VideoReceiverInfo {
@@ -167,6 +181,16 @@ struct VideoReceiverInfo {
   int framerate_output;
 };
 
+struct BandwidthEstimationInfo {
+  int available_send_bandwidth;
+  int available_recv_bandwidth;
+  int target_enc_bitrate;
+  int actual_enc_bitrate;
+  int retransmit_bitrate;
+  int transmit_bitrate;
+  int bucket_delay;
+};
+
 struct VoiceMediaInfo {
   void Clear() {
     senders.clear();
@@ -180,9 +204,11 @@ struct VideoMediaInfo {
   void Clear() {
     senders.clear();
     receivers.clear();
+    bw_estimations.clear();
   }
   std::vector<VideoSenderInfo> senders;
   std::vector<VideoReceiverInfo> receivers;
+  std::vector<BandwidthEstimationInfo> bw_estimations;
 };
 
 class VoiceMediaChannel : public MediaChannel {
@@ -197,12 +223,15 @@ class VoiceMediaChannel : public MediaChannel {
     ERROR_REC_DEVICE_REMOVED,             // Mic was removed while active.
     ERROR_REC_RUNTIME_ERROR,              // Processing is encountering errors.
     ERROR_REC_SRTP_ERROR,                 // Generic SRTP failure.
+    ERROR_REC_SRTP_AUTH_FAILED,           // Failed to authenticate packets.
+    ERROR_REC_TYPING_NOISE_DETECTED,      // Typing noise is detected.
     ERROR_PLAY_DEVICE_OPEN_FAILED = 200,  // Could not open playout.
     ERROR_PLAY_DEVICE_MUTED,              // Playout muted by OS.
     ERROR_PLAY_DEVICE_REMOVED,            // Playout removed while active.
     ERROR_PLAY_RUNTIME_ERROR,             // Errors in voice processing.
     ERROR_PLAY_SRTP_ERROR,                // Generic SRTP failure.
     ERROR_PLAY_SRTP_AUTH_FAILED,          // Failed to authenticate packets.
+    ERROR_PLAY_SRTP_REPLAY,               // Packet replay detected.
   };
 
   VoiceMediaChannel() {}
@@ -224,9 +253,9 @@ class VoiceMediaChannel : public MediaChannel {
   // Get the current energy level for the outgoing stream.
   virtual int GetOutputLevel() = 0;
   // Specifies a ringback tone to be played during call setup.
-  virtual void SetRingbackTone(const char *buf, int len) = 0;
+  virtual bool SetRingbackTone(const char *buf, int len) = 0;
   // Plays or stops the aforementioned ringback tone
-  virtual bool PlayRingbackTone(bool play, bool loop) = 0;
+  virtual bool PlayRingbackTone(uint32 ssrc, bool play, bool loop) = 0;
   // Sends a out-of-band DTMF signal using the specified event.
   virtual bool PressDTMF(int event, bool playout) = 0;
   // Gets quality stats for the channel.
@@ -426,8 +455,10 @@ class VideoMediaChannel : public MediaChannel {
     ERROR_REC_DEVICE_IN_USE,              // Device is in already use.
     ERROR_REC_DEVICE_REMOVED,             // Device is removed.
     ERROR_REC_SRTP_ERROR,                 // Generic sender SRTP failure.
+    ERROR_REC_SRTP_AUTH_FAILED,           // Failed to authenticate packets.
     ERROR_PLAY_SRTP_ERROR = 200,          // Generic receiver SRTP failure.
     ERROR_PLAY_SRTP_AUTH_FAILED,          // Failed to authenticate packets.
+    ERROR_PLAY_SRTP_REPLAY,               // Packet replay detected.
   };
 
   VideoMediaChannel() { renderer_ = NULL; }

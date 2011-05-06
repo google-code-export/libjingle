@@ -50,6 +50,7 @@ Call::Call(MediaSessionClient* session_client)
     : id_(talk_base::CreateRandomId()),
       session_client_(session_client),
       local_renderer_(NULL),
+      video_(false),
       muted_(false),
       send_to_voicemail_(true),
       playing_dtmf_(false) {
@@ -131,6 +132,30 @@ void Call::Terminate() {
     TerminateSession(*it);
 }
 
+bool Call::SendViewRequest(Session* session,
+                           const ViewRequest& view_request) {
+  StaticVideoViews::const_iterator it;
+  for (it = view_request.static_video_views.begin();
+       it != view_request.static_video_views.end(); ++it) {
+    const NamedSource* found_source =
+        media_sources.GetVideoSourceBySsrc(it->ssrc);
+    if (!found_source) {
+      LOG(LS_WARNING) <<
+          "Tried sending view request for bad ssrc: " << it->ssrc;
+      return false;
+    }
+  }
+
+  XmlElements elems;
+  WriteError error;
+  if (!WriteViewRequest(CN_VIDEO, view_request, &elems, &error)) {
+    LOG(LS_ERROR) << "Couldn't write out view request: " << error.text;
+    return false;
+  }
+
+  return session->SendInfoMessage(elems);
+}
+
 void Call::SetLocalRenderer(VideoRenderer* renderer) {
   local_renderer_ = renderer;
   if (session_client_->GetFocus() == this) {
@@ -146,25 +171,31 @@ void Call::SetVideoRenderer(BaseSession *session, uint32 ssrc,
   }
 }
 
-void Call::AddStream(BaseSession *session,
-                     uint32 voice_ssrc, uint32 video_ssrc) {
+void Call::AddVoiceStream(BaseSession *session, uint32 voice_ssrc) {
   VoiceChannel *voice_channel = GetVoiceChannel(session);
-  VideoChannel *video_channel = GetVideoChannel(session);
   if (voice_channel && voice_ssrc) {
     voice_channel->AddStream(voice_ssrc);
   }
+}
+
+void Call::AddVideoStream(BaseSession *session, uint32 video_ssrc) {
+  VideoChannel *video_channel = GetVideoChannel(session);
   if (video_channel && video_ssrc) {
-    video_channel->AddStream(video_ssrc, voice_ssrc);
+    // TODO: Do we need the audio_ssrc here?
+    // It doesn't seem to be used.
+    video_channel->AddStream(video_ssrc, 0U);
   }
 }
 
-void Call::RemoveStream(BaseSession *session,
-                        uint32 voice_ssrc, uint32 video_ssrc) {
+void Call::RemoveVoiceStream(BaseSession *session, uint32 voice_ssrc) {
   VoiceChannel *voice_channel = GetVoiceChannel(session);
-  VideoChannel *video_channel = GetVideoChannel(session);
   if (voice_channel && voice_ssrc) {
     voice_channel->RemoveStream(voice_ssrc);
   }
+}
+
+void Call::RemoveVideoStream(BaseSession *session, uint32 video_ssrc) {
+  VideoChannel *video_channel = GetVideoChannel(session);
   if (video_channel && video_ssrc) {
     video_channel->RemoveStream(video_ssrc);
   }
@@ -239,6 +270,7 @@ bool Call::AddSession(Session *session, const SessionDescription* offer) {
     sessions_.push_back(session);
     session->SignalState.connect(this, &Call::OnSessionState);
     session->SignalError.connect(this, &Call::OnSessionError);
+    session->SignalInfoMessage.connect(this, &Call::OnSessionInfo);
     session->SignalReceivedTerminateReason
       .connect(this, &Call::OnReceivedTerminateReason);
 
@@ -487,6 +519,69 @@ void Call::OnSessionError(BaseSession *session, Session::Error error) {
   session_client_->session_manager()->signaling_thread()->Clear(this,
       MSG_TERMINATECALL);
   SignalSessionError(this, session, error);
+}
+
+void Call::OnSessionInfo(Session *session,
+                         const buzz::XmlElement* action_elem) {
+  if (IsSourcesNotify(action_elem)) {
+    MediaSources sources;
+    ParseError error;
+    if (!ParseSourcesNotify(action_elem, session->remote_description(),
+                            &sources, &error)) {
+      // TODO: Is there a way we can signal an IQ error
+      // back to the sender?
+      LOG(LS_WARNING) << "Invalid sources notify message: " << error.text;
+      return;
+    }
+
+    NamedSources::iterator it;
+    for (it = sources.audio.begin(); it != sources.audio.end(); ++it) {
+      const NamedSource* found;
+      if (it->ssrc_set) {
+        found = media_sources.GetAudioSourceBySsrc(it->ssrc);
+      } else {
+        // For backwards compatibility, we remove by nick.
+        // TODO: Remove once all senders use explicit remove by ssrc.
+        found = media_sources.GetFirstAudioSourceByNick(it->nick);
+        it->SetSsrc(found->ssrc);
+        it->removed = true;
+      }
+      if (it->removed && found) {
+        LOG(LS_INFO) << "Remove voice stream:  " << found->ssrc;
+        RemoveVoiceStream(session, found->ssrc);
+        media_sources.RemoveAudioSourceBySsrc(it->ssrc);
+      } else if (!it->removed && !found) {
+        LOG(LS_INFO) << "Add voice stream:  " << it->ssrc;
+        AddVoiceStream(session, it->ssrc);
+        media_sources.AddAudioSource(*it);
+      }
+    }
+    for (it = sources.video.begin(); it != sources.video.end(); ++it) {
+      const NamedSource* found;
+      if (it->ssrc_set) {
+        found = media_sources.GetVideoSourceBySsrc(it->ssrc);
+      } else {
+        // For backwards compatibility, we remove by nick.
+        // TODO: Remove once all senders use explicit remove by ssrc.
+        found = media_sources.GetFirstVideoSourceByNick(it->nick);
+        it->SetSsrc(found->ssrc);
+        it->removed = true;
+      }
+      if (it->removed && found) {
+        LOG(LS_INFO) << "Remove video stream:  " << found->ssrc;
+        RemoveVideoStream(session, found->ssrc);
+        media_sources.RemoveVideoSourceBySsrc(it->ssrc);
+      } else if (!it->removed && !found) {
+        LOG(LS_INFO) << "Add video stream:  " << it->ssrc;
+        AddVideoStream(session, it->ssrc);
+        media_sources.AddVideoSource(*it);
+      }
+    }
+
+    if (!sources.audio.empty() || !sources.video.empty()) {
+      SignalMediaSourcesUpdate(this, session, sources);
+    }
+  }
 }
 
 void Call::OnReceivedTerminateReason(Session *session,

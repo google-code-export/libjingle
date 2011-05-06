@@ -46,9 +46,10 @@ enum {
   MSG_CREATEVOICECHANNEL = 1,
   MSG_DESTROYVOICECHANNEL = 2,
   MSG_SETAUDIOOPTIONS = 3,
-  MSG_SETOUTPUTVOLUME = 4,
-  MSG_SETLOCALMONITOR = 5,
-  MSG_SETVOICELOGGING = 6,
+  MSG_GETOUTPUTVOLUME = 4,
+  MSG_SETOUTPUTVOLUME = 5,
+  MSG_SETLOCALMONITOR = 6,
+  MSG_SETVOICELOGGING = 7,
   MSG_CREATEVIDEOCHANNEL = 11,
   MSG_DESTROYVIDEOCHANNEL = 12,
   MSG_SETVIDEOOPTIONS = 13,
@@ -86,6 +87,7 @@ struct AudioOptions : public talk_base::MessageData {
 };
 
 struct VolumeLevel : public talk_base::MessageData {
+  VolumeLevel() : level(-1), result(false) {}
   explicit VolumeLevel(int l) : level(l), result(false) {}
   int level;
   bool result;
@@ -234,8 +236,10 @@ bool ChannelManager::Init() {
         audio_out_device_ = DeviceManager::kDefaultDeviceName;
       }
       if (!device_manager_->GetVideoCaptureDevice(camera_device_, &device)) {
-        LOG(LS_WARNING) << "The preferred camera '" << camera_device_
-                        << "' is unavailable. Fall back to the default.";
+        if (!camera_device_.empty()) {
+          LOG(LS_WARNING) << "The preferred camera '" << camera_device_
+                          << "' is unavailable. Fall back to the default.";
+        }
         camera_device_ = DeviceManager::kDefaultDeviceName;
       }
 
@@ -246,7 +250,7 @@ bool ChannelManager::Init() {
                         << " speaker: " << audio_out_device_
                         << " options: " << audio_options_;
       }
-      if (!SetVideoOptions(camera_device_)) {
+      if (!SetVideoOptions(camera_device_) && !camera_device_.empty()) {
         LOG(LS_WARNING) << "Failed to SetVideoOptions with camera: "
                         << camera_device_;
       }
@@ -438,9 +442,12 @@ bool ChannelManager::SetAudioOptions(const std::string& in_name,
                                      const std::string& out_name, int opts) {
   // Get device ids from DeviceManager.
   Device in_dev, out_dev;
-  if (!device_manager_->GetAudioInputDevice(in_name, &in_dev) ||
-      !device_manager_->GetAudioOutputDevice(out_name, &out_dev)) {
-    LOG(LS_WARNING) << "Device manager can't find selected device";
+  if (!device_manager_->GetAudioInputDevice(in_name, &in_dev)) {
+    LOG(LS_WARNING) << "Failed to GetAudioInputDevice: " << in_name;
+    return false;
+  }
+  if (!device_manager_->GetAudioOutputDevice(out_name, &out_dev)) {
+    LOG(LS_WARNING) << "Failed to GetAudioOutputDevice: " << out_name;
     return false;
   }
 
@@ -477,6 +484,22 @@ bool ChannelManager::SetAudioOptions_w(int opts, const Device* in_dev,
   return ret;
 }
 
+bool ChannelManager::GetOutputVolume(int* level) {
+  VolumeLevel volume;
+  if (!Send(MSG_GETOUTPUTVOLUME, &volume) || !volume.result) {
+    return false;
+  }
+
+  *level = volume.level;
+  return true;
+}
+
+bool ChannelManager::GetOutputVolume_w(int* level) {
+  ASSERT(worker_thread_ == talk_base::Thread::Current());
+  ASSERT(initialized_);
+  return media_engine_->GetOutputVolume(level);
+}
+
 bool ChannelManager::SetOutputVolume(int level) {
   VolumeLevel volume(level);
   return (Send(MSG_SETOUTPUTVOLUME, &volume) && volume.result);
@@ -496,7 +519,9 @@ bool ChannelManager::GetVideoOptions(std::string* cam_name) {
 bool ChannelManager::SetVideoOptions(const std::string& cam_name) {
   Device device;
   if (!device_manager_->GetVideoCaptureDevice(cam_name, &device)) {
-    LOG(LS_WARNING) << "Device manager can't find camera: " << cam_name;
+    if (!cam_name.empty()) {
+      LOG(LS_WARNING) << "Device manager can't find camera: " << cam_name;
+    }
     return false;
   }
 
@@ -677,6 +702,11 @@ void ChannelManager::OnMessage(talk_base::Message* message) {
       AudioOptions* p = static_cast<AudioOptions*>(data);
       p->result = SetAudioOptions_w(p->options,
                                     p->in_device, p->out_device);
+      break;
+    }
+    case MSG_GETOUTPUTVOLUME: {
+      VolumeLevel* p = static_cast<VolumeLevel*>(data);
+      p->result = GetOutputVolume_w(&p->level);
       break;
     }
     case MSG_SETOUTPUTVOLUME: {

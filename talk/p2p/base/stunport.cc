@@ -101,8 +101,10 @@ class StunPortBindingRequest : public StunRequest {
   }
 
   virtual void OnTimeout() {
+    talk_base::SocketAddress address;
+    port_->socket_->GetLocalAddress(&address);
     LOG(LS_ERROR) << "Binding request timed out from "
-                  << port_->socket_->GetLocalAddress(NULL).ToString()
+                  << address.ToString()
                   << " (" << port_->network()->name() << ")";
 
     port_->SignalAddressError(port_);

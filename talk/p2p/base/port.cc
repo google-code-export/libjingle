@@ -213,13 +213,15 @@ void Port::OnReadPacket(
   } else if (msg->type() == STUN_BINDING_REQUEST) {
     SignalUnknownAddress(this, addr, msg, remote_username);
   } else {
-    // NOTE(tschmelcher): This is benign. It occurs if we pruned a
-    // connection for this port while it had STUN requests in flight, because
-    // we then get back responses for them, which this code correctly does not
-    // handle.
-    LOG_J(LS_ERROR, this) << "Received unexpected STUN message type ("
-                          << msg->type() << ") from unknown address ("
-                          << addr.ToString() << ")";
+    // NOTE(tschmelcher): STUN_BINDING_RESPONSE is benign. It occurs if we
+    // pruned a connection for this port while it had STUN requests in flight,
+    // because we then get back responses for them, which this code correctly
+    // does not handle.
+    if (msg->type() != STUN_BINDING_RESPONSE) {
+      LOG_J(LS_ERROR, this) << "Received unexpected STUN message type ("
+                            << msg->type() << ") from unknown address ("
+                            << addr.ToString() << ")";
+    }
     delete msg;
   }
 }
@@ -262,7 +264,8 @@ bool Port::GetStunMessage(const char* data, size_t size,
                            username_frag_.size()) != 0) {
       LOG_J(LS_ERROR, this) << "Received STUN request with bad local username "
                             << std::string(username_attr->bytes(),
-                                           username_attr->length()) << " from "
+                                           username_attr->length())
+                            << " from "
                             << addr.ToString();
       SendBindingErrorResponse(stun_msg.get(), addr, STUN_ERROR_BAD_REQUEST,
                                STUN_ERROR_REASON_BAD_REQUEST);
@@ -283,7 +286,8 @@ bool Port::GetStunMessage(const char* data, size_t size,
                            username_frag_.size()) != 0) {
       LOG_J(LS_ERROR, this) << "Received STUN response with bad local username "
                             << std::string(username_attr->bytes(),
-                                           username_attr->length()) << " from "
+                                           username_attr->length())
+                            << " from "
                             << addr.ToString();
       // Do not send error response to a response
       return true;
@@ -415,7 +419,8 @@ void Port::OnMessage(talk_base::Message *pmsg) {
 
 std::string Port::ToString() const {
   std::stringstream ss;
-  ss << "Port[" << name_ << ":" << type_ << ":" << network_->ToString() << "]";
+  ss << "Port[" << name_ << ":" << generation_ << ":" << type_
+     << ":" << network_->ToString() << "]";
   return ss.str();
 }
 
@@ -756,10 +761,11 @@ std::string Connection::ToString() const {
   const Candidate& local = local_candidate();
   const Candidate& remote = remote_candidate();
   std::stringstream ss;
-  ss << "Conn[" << local.generation()
-     << ":" << local.name() << ":" << local.type() << ":"
-     << local.protocol() << ":" << local.address().ToString()
-     << "->" << remote.name() << ":" << remote.type() << ":"
+  ss << "Conn[" << local.name() << ":" << local.generation()
+     << ":" << local.type() << ":" << local.protocol()
+     << ":" << local.address().ToString()
+     << "->" << remote.name() << ":" << remote.generation()
+     << ":" << remote.type() << ":"
      << remote.protocol() << ":" << remote.address().ToString()
      << "|"
      << CONNECT_STATE_ABBREV[connected()]
@@ -824,16 +830,8 @@ void Connection::OnConnectionRequestTimeout(ConnectionRequest* request) {
   // Log at LS_INFO if we miss a ping on a writable connection.
   talk_base::LoggingSeverity sev = (write_state_ == STATE_WRITABLE) ?
       talk_base::LS_INFO : talk_base::LS_VERBOSE;
-  uint32 when = talk_base::Time() - request->Elapsed();
-  size_t failures;
-  for (failures = 0; failures < pings_since_last_response_.size(); ++failures) {
-    if (pings_since_last_response_[failures] > when) {
-      break;
-    }
-  }
   LOG_JV(sev, this) << "Timing-out STUN ping " << request->id()
-                    << " after " << request->Elapsed()
-                    << " ms, failures=" << failures;
+                    << " after " << request->Elapsed() << " ms";
 }
 
 void Connection::CheckTimeout() {

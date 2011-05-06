@@ -26,6 +26,9 @@
 //
 
 #include "talk/session/phone/mediaengine.h"
+#ifdef HAVE_LINPHONE
+#include "talk/session/phone/linphonemediaengine.h"
+#endif
 
 
 namespace cricket {
@@ -34,7 +37,10 @@ namespace cricket {
 // be false, so we can get rid of it.
 
 MediaEngine* MediaEngine::Create() {
+#ifdef HAVE_LINPHONE
+  return new LinphoneMediaEngine("", "");
+#else
   return new NullMediaEngine();
+#endif
 }
-
 };  // namespace cricket

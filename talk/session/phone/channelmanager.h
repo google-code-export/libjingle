@@ -79,15 +79,6 @@ class ChannelManager : public talk_base::MessageHandler,
   void GetSupportedAudioCodecs(std::vector<AudioCodec>* codecs) const;
   void GetSupportedVideoCodecs(std::vector<VideoCodec>* codecs) const;
 
-  // Determines if a specific audio or video codec is supported.
-  // Can be called before starting the media engine.
-  bool FindAudioCodec(const AudioCodec& codec) const {
-    return media_engine_->FindAudioCodec(codec);
-  }
-  bool FindVideoCodec(const VideoCodec& video_codec) const {
-    return media_engine_->FindVideoCodec(video_codec);
-  }
-
   // Indicates whether the media engine is started.
   bool initialized() const { return initialized_; }
   // Starts up the media engine.
@@ -130,6 +121,7 @@ class ChannelManager : public talk_base::MessageHandler,
                        std::string* wave_out_device, int* opts);
   bool SetAudioOptions(const std::string& wave_in_device,
                        const std::string& wave_out_device, int opts);
+  bool GetOutputVolume(int* level);
   bool SetOutputVolume(int level);
   bool GetVideoOptions(std::string* cam_device);
   bool SetVideoOptions(const std::string& cam_device);
@@ -174,6 +166,7 @@ class ChannelManager : public talk_base::MessageHandler,
   void DestroySoundclip_w(Soundclip* soundclip);
   bool SetAudioOptions_w(int opts, const Device* in_dev,
                          const Device* out_dev);
+  bool GetOutputVolume_w(int* level);
   bool SetOutputVolume_w(int level);
   bool SetLocalMonitor_w(bool enable);
   bool SetVideoOptions_w(const Device* cam_device);
