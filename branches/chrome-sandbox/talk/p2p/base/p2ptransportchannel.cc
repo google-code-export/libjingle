@@ -338,8 +338,6 @@ void P2PTransportChannel::OnUnknownAddress(
   // This remote username exists. Now create connections using this candidate,
   // and resort
 
-  RememberRemoteCandidate(new_remote_candidate, port);
-
   if (CreateConnections(new_remote_candidate, port, true)) {
     // Send the pinger a successful stun response.
     port->SendBindingResponse(stun_msg, address);
@@ -362,15 +360,11 @@ void P2PTransportChannel::OnUnknownAddress(
 void P2PTransportChannel::OnCandidate(const Candidate& candidate) {
   ASSERT(worker_thread_ == talk_base::Thread::Current());
 
-  RememberRemoteCandidate(candidate, NULL);
+  // Create connections to this remote candidate.
+  CreateConnections(candidate, NULL, false);
 
-  if (!incoming_only_) {
-    // Create connections to this remote candidate.
-    CreateConnections(candidate, NULL, false);
-
-    // Resort the connections list, which may have new elements.
-    SortConnections();
-  }
+  // Resort the connections list, which may have new elements.
+  SortConnections();
 }
 
 // Creates connections from all of the ports that we care about to the given
@@ -403,6 +397,9 @@ bool P2PTransportChannel::CreateConnections(const Candidate &remote_candidate,
       created = true;
   }
 
+  // Remember this remote candidate so that we can add it to future ports.
+  RememberRemoteCandidate(remote_candidate, origin_port);
+
   return created;
 }
 
@@ -424,6 +421,12 @@ bool P2PTransportChannel::CreateConnection(Port* port,
     }
   } else {
     Port::CandidateOrigin origin = GetOrigin(port, origin_port);
+
+    // Don't create connection if this is a candidate we received in a
+    // message and we are not allowed to make outgoing connections.
+    if (origin == cricket::Port::ORIGIN_MESSAGE && incoming_only_)
+      return false;
+
     connection = port->CreateConnection(remote_candidate, origin);
     if (!connection)
       return false;
