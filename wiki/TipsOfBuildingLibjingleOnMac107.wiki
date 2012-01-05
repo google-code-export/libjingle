@@ -1,5 +1,5 @@
 #labels Phase-Deploy,Phase-Support
-#Tips for building Libjingle on Mac 10.7
+*Tips for building Libjingle on Mac 10.7*
 
 = Introduction =
 
