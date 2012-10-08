@@ -39,7 +39,6 @@
 #include "talk/media/base/cryptoparams.h"
 #include "talk/p2p/base/candidate.h"
 #include "talk/p2p/base/constants.h"
-#include "talk/p2p/base/port.h"
 #include "talk/p2p/base/relayport.h"
 #include "talk/p2p/base/stunport.h"
 #include "talk/p2p/base/udpport.h"
@@ -178,12 +177,15 @@ static void BuildIceOptions(const TransportOptions& transport_options,
 static bool ParseSessionDescription(const std::string& message, size_t* pos,
                                     std::string* session_id,
                                     std::string* session_version,
-                                    TransportDescription* session_td,
+                                    std::string* session_ice_ufrag,
+                                    std::string* session_ice_pwd,
+                                    TransportOptions* session_transport_options,
                                     cricket::SessionDescription* desc);
 static bool ParseGroupAttribute(const std::string& line,
                                 cricket::SessionDescription* desc);
 static bool ParseMediaDescription(const std::string& message,
-    const TransportDescription& session_td,
+    const std::string& session_ice_ufrag, const std::string& session_ice_pwd,
+    const TransportOptions& session_transport_options,
     size_t* pos, cricket::SessionDescription* desc,
     std::vector<JsepIceCandidate*>* candidates);
 static bool ParseContent(const std::string& message,
@@ -573,20 +575,25 @@ bool SdpDeserialize(const std::string& message,
                     JsepSessionDescription* jdesc) {
   std::string session_id;
   std::string session_version;
-  TransportDescription session_td;
+  std::string session_ice_ufrag;
+  std::string session_ice_pwd;
+  TransportOptions session_transport_options;
   cricket::SessionDescription* desc = new cricket::SessionDescription();
   std::vector<JsepIceCandidate*> candidates;
   size_t current_pos = 0;
 
   // Session Description
-  if (!ParseSessionDescription(message, &current_pos, &session_id,
-                               &session_version, &session_td, desc)) {
+  if (!ParseSessionDescription(message, &current_pos,
+                               &session_id, &session_version,
+                               &session_ice_ufrag, &session_ice_pwd,
+                               &session_transport_options, desc)) {
     delete desc;
     return false;
   }
 
   // Media Description
-  if (!ParseMediaDescription(message, session_td,
+  if (!ParseMediaDescription(message, session_ice_ufrag, session_ice_pwd,
+                             session_transport_options,
                              &current_pos, desc, &candidates)) {
     delete desc;
     for (std::vector<JsepIceCandidate*>::const_iterator
@@ -652,12 +659,6 @@ bool ParseCandidate(const std::string& message, Candidate* candidate) {
   const int port = talk_base::FromString<int>(fields[5]);
   SocketAddress address(connection_address, port);
 
-  cricket::ProtocolType protocol;
-  if (!StringToProto(transport.c_str(), &protocol)) {
-    LOG(LS_ERROR) << "Unsupported transport type: " << message;
-    return false;
-  }
-
   std::string candidate_type;
   const std::string type = fields[7];
   if (type == kCandidateHost) {
@@ -713,9 +714,9 @@ bool ParseCandidate(const std::string& message, Candidate* candidate) {
   // Empty string as the candidate id and network name.
   const std::string id;
   const std::string network_name;
-  *candidate = Candidate(id, component_id, cricket::ProtoToString(protocol),
-      address, priority, username, password, candidate_type, network_name,
-      generation, foundation);
+  *candidate = Candidate(id, component_id, transport, address, priority,
+      username, password, candidate_type, network_name, generation,
+      foundation);
   candidate->set_related_address(related_address);
   return true;
 }
@@ -997,7 +998,9 @@ void BuildIceOptions(const TransportOptions& transport_options,
 bool ParseSessionDescription(const std::string& message, size_t* pos,
                              std::string* session_id,
                              std::string* session_version,
-                             TransportDescription* session_td,
+                             std::string* session_ice_ufrag,
+                             std::string* session_ice_pwd,
+                             TransportOptions* session_transport_options,
                              cricket::SessionDescription* desc) {
   std::string line;
 
@@ -1097,17 +1100,17 @@ bool ParseSessionDescription(const std::string& message, size_t* pos,
         return false;
       }
     } else if (HasAttribute(line, kAttributeIceUfrag)) {
-      if (!GetValue(line, kAttributeIceUfrag, &(session_td->ice_ufrag))) {
+      if (!GetValue(line, kAttributeIceUfrag, session_ice_ufrag)) {
         LOG_LINE_PARSING_ERROR(line);
         return false;
       }
     } else if (HasAttribute(line, kAttributeIcePwd)) {
-      if (!GetValue(line, kAttributeIcePwd, &(session_td->ice_pwd))) {
+      if (!GetValue(line, kAttributeIcePwd, session_ice_pwd)) {
         LOG_LINE_PARSING_ERROR(line);
         return false;
       }
     } else if (HasAttribute(line, kAttributeIceOption)) {
-      if (!ParseIceOptions(line, &(session_td->transport_options))) {
+      if (!ParseIceOptions(line, session_transport_options)) {
         LOG_LINE_PARSING_ERROR(line);
         return false;
       }
@@ -1142,7 +1145,9 @@ bool ParseGroupAttribute(const std::string& line,
 }
 
 bool ParseMediaDescription(const std::string& message,
-                           const TransportDescription& session_td,
+                           const std::string& session_ice_ufrag,
+                           const std::string& session_ice_pwd,
+                           const TransportOptions& session_transport_options,
                            size_t* pos,
                            cricket::SessionDescription* desc,
                            std::vector<JsepIceCandidate*>* candidates) {
@@ -1197,11 +1202,11 @@ bool ParseMediaDescription(const std::string& message,
     // ice-pwd and ice-ufrag attribute for each media stream.
     // If we didn't get the username and password from the media level,
     // then use the one from session level.
-    media_ice_ufrag = session_td.ice_ufrag;
-    media_ice_pwd = session_td.ice_pwd;
+    media_ice_ufrag = session_ice_ufrag;
+    media_ice_pwd = session_ice_pwd;
 
     // Use the session level ice options as the base of media level ice options.
-    media_transport_options = session_td.transport_options;
+    media_transport_options = session_transport_options;
 
     if (!ParseContent(message, media_type, mline_index, pos, content,
                       &content_name, &media_ice_ufrag, &media_ice_pwd,

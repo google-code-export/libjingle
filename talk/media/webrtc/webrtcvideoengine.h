@@ -265,6 +265,7 @@ class WebRtcVideoMediaChannel : public talk_base::MessageHandler,
   typedef std::map<uint32, WebRtcVideoChannelRecvInfo*> RecvChannelMap;
   typedef std::map<uint32, WebRtcVideoChannelSendInfo*> SendChannelMap;
 
+
   enum MediaDirection { MD_RECV, MD_SEND, MD_SENDRECV };
 
   // Creates and initializes a ViE channel. When successful |channel_id| will
@@ -332,14 +333,14 @@ class WebRtcVideoMediaChannel : public talk_base::MessageHandler,
 
   bool DeleteSendChannel(uint32 ssrc_key);
 
-  bool IsOptionSet(int option) const { return (0 != (options_ & option)); }
-  bool InConferenceMode() const { return IsOptionSet(OPT_CONFERENCE); }
+  bool InConferenceMode() const { return (options_ & OPT_CONFERENCE) != 0; }
   void OnFrameCaptured(VideoCapturer* capturer, const CapturedFrame* frame);
   bool RemoveCapturer(uint32 ssrc);
 
 
   void QueueBlackFrame(uint32 ssrc, int64 timestamp, int framerate);
   void FlushBlackFrame(uint32 ssrc, int64 timestamp);
+
 
   // Global state.
   WebRtcVideoEngine* engine_;

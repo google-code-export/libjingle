@@ -282,44 +282,36 @@ PeerConnection::PeerConnection(PeerConnectionFactory* factory)
 PeerConnection::~PeerConnection() {
 }
 
-bool PeerConnection::Initialize(
-    const std::string& configuration,
-    webrtc::PortAllocatorFactoryInterface* allocator_factory,
-    PeerConnectionObserver* observer) {
+bool PeerConnection::Initialize(const std::string& configuration,
+                                PeerConnectionObserver* observer) {
   std::vector<PortAllocatorFactoryInterface::StunConfiguration> stun_config;
   std::vector<PortAllocatorFactoryInterface::TurnConfiguration> turn_config;
   ParseConfigString(configuration, &stun_config, &turn_config);
-  return DoInitialize(stun_config, turn_config, NULL,
-                      allocator_factory, observer);
+  return DoInitialize(stun_config, turn_config, observer);
 }
 
-bool PeerConnection::Initialize(
-    const JsepInterface::IceServers& configuration,
-    const MediaConstraintsInterface* constraints,
-    webrtc::PortAllocatorFactoryInterface* allocator_factory,
-    PeerConnectionObserver* observer) {
+bool PeerConnection::Initialize(const JsepInterface::IceServers& configuration,
+                                const MediaConstraintsInterface* constraints,
+                                PeerConnectionObserver* observer) {
   std::vector<PortAllocatorFactoryInterface::StunConfiguration> stun_config;
   std::vector<PortAllocatorFactoryInterface::TurnConfiguration> turn_config;
   if (!ParseIceServers(configuration, &stun_config, &turn_config)) {
     return false;
   }
-
-  return DoInitialize(stun_config, turn_config, constraints,
-                      allocator_factory, observer);
+  // TODO(perkj): Take |constraints| into consideration.
+  return DoInitialize(stun_config, turn_config, observer);
 }
 
-bool PeerConnection::DoInitialize(
-    const StunConfigurations& stun_config,
-    const TurnConfigurations& turn_config,
-    const MediaConstraintsInterface* constraints,
-    webrtc::PortAllocatorFactoryInterface* allocator_factory,
-    PeerConnectionObserver* observer) {
+bool PeerConnection::DoInitialize(const StunConfigurations& stun_config,
+                                  const TurnConfigurations& turn_config,
+                                  PeerConnectionObserver* observer) {
   ASSERT(observer != NULL);
   if (!observer)
     return false;
   observer_ = observer;
-  port_allocator_.reset(
-      allocator_factory->CreatePortAllocator(stun_config, turn_config));
+
+  port_allocator_.reset(factory_->port_allocator_factory()->CreatePortAllocator(
+      stun_config, turn_config));
   // To handle both internal and externally created port allocator, we will
   // enable BUNDLE here.
   port_allocator_->set_flags(cricket::PORTALLOCATOR_ENABLE_BUNDLE |
@@ -337,7 +329,7 @@ bool PeerConnection::DoInitialize(
                                                 session_.get()));
 
   // Initialize the WebRtcSession. It creates transport channels etc.
-  if (!session_->Initialize(constraints))
+  if (!session_->Initialize())
     return false;
 
 

@@ -49,7 +49,6 @@
 #include "talk/media/base/voiceprocessor.h"
 #include "talk/media/webrtc/webrtcvoe.h"
 
-
 #ifdef WIN32
 #include <objbase.h>  // NOLINT
 #endif
@@ -546,7 +545,7 @@ bool WebRtcVoiceEngine::ApplyOptions(const AudioOptions& options_in) {
       return false;
     }
 #if !defined(IOS) && !defined(ANDROID)
-    // SetEcMetricsStatus is currently disabled on mobile.
+// SetEcMetricsStatus is currently disabled on mobile.
     if (voep->SetEcMetricsStatus(echo_cancellation) == -1) {
       LOG_RTCERR1(SetEcMetricsStatus, echo_cancellation);
       return false;
@@ -560,13 +559,13 @@ bool WebRtcVoiceEngine::ApplyOptions(const AudioOptions& options_in) {
     }
   }
 
-    bool auto_gain_control;
-    if (options.auto_gain_control.Get(&auto_gain_control)) {
-      if (voep->SetAgcStatus(auto_gain_control, options.agc_mode) == -1) {
-        LOG_RTCERR2(SetAgcStatus, auto_gain_control, options.agc_mode);
-        return false;
-      }
+  bool auto_gain_control;
+  if (options.auto_gain_control.Get(&auto_gain_control)) {
+    if (voep->SetAgcStatus(auto_gain_control, options.agc_mode) == -1) {
+      LOG_RTCERR2(SetAgcStatus, auto_gain_control, options.agc_mode);
+      return false;
     }
+  }
 
   bool noise_suppression;
   if (options.noise_suppression.Get(&noise_suppression)) {
@@ -584,8 +583,6 @@ bool WebRtcVoiceEngine::ApplyOptions(const AudioOptions& options_in) {
     }
   }
 
-#if !defined(IOS)
-// Current build fails setting stereo swapping on iOS
   bool stereo_swapping;
   if (options.stereo_swapping.Get(&stereo_swapping)) {
     voep->EnableStereoChannelSwapping(stereo_swapping);
@@ -594,7 +591,7 @@ bool WebRtcVoiceEngine::ApplyOptions(const AudioOptions& options_in) {
       return false;
     }
   }
-#endif
+
   bool typing_detection;
   if (options.typing_detection.Get(&typing_detection)) {
     if (voep->SetTypingDetectionStatus(typing_detection) == -1) {
@@ -994,8 +991,6 @@ bool WebRtcVoiceEngine::ShouldIgnoreTrace(const std::string& trace) {
     "StatisticsRTP() no statisitics availble",
     "WebRtc:TransmitMixer::TypingDetection() VE_TYPING_NOISE_WARNING message has been posted",  // NOLINT
     "WebRtc:TransmitMixer::TypingDetection() pending noise-saturation warning exists",  // NOLINT
-    "WebRtc:GetRecPayloadType() failed to retrieve RX payload type (error=10026)", // NOLINT
-    "WebRtc:StopPlayingFileAsMicrophone() isnot playing (error=8088)",
     NULL
   };
   for (const char* const* p = kTracesToIgnore; *p; ++p) {
@@ -2254,33 +2249,26 @@ bool WebRtcVoiceMediaChannel::GetStats(VoiceMediaInfo* info) {
   // returns 0 to indicate an error value.
   sinfo.rtt_ms = (cs.rttMs > 0) ? cs.rttMs : -1;
 
-  // Get data from the last remote RTCP report. Use default values if no data
-  // available.
-  sinfo.fraction_lost = -1.0;
-  sinfo.jitter_ms = -1;
-  sinfo.packets_lost = -1;
-  sinfo.ext_seqnum = -1;
-  std::vector<webrtc::ReportBlock> receive_blocks;
-  if (engine()->voe()->rtp()->GetRemoteRTCPReportBlocks(
-      voe_channel(), &receive_blocks) != -1 &&
+  // Data from the last remote RTCP report.
+  unsigned int ntp_high, ntp_low, timestamp, ptimestamp, jitter;
+  unsigned short loss;  // NOLINT
+  if (engine()->voe()->rtp()->GetRemoteRTCPData(voe_channel(),
+          ntp_high, ntp_low, timestamp, ptimestamp, &jitter, &loss) != -1 &&
       engine()->voe()->codec()->GetSendCodec(voe_channel(),
           codec) != -1) {
-    std::vector<webrtc::ReportBlock>::iterator iter;
-    for (iter = receive_blocks.begin(); iter != receive_blocks.end(); ++iter) {
-      // Lookup report for send ssrc only.
-      if (iter->source_SSRC == sinfo.ssrc) {
-        // Convert Q8 to floating point.
-        sinfo.fraction_lost = static_cast<float>(iter->fraction_lost) / 256;
-        // Convert samples to milliseconds.
-        if (codec.plfreq / 1000 > 0) {
-          sinfo.jitter_ms = iter->interarrival_jitter / (codec.plfreq / 1000);
-        }
-        sinfo.packets_lost = iter->cumulative_num_packets_lost;
-        sinfo.ext_seqnum = iter->extended_highest_sequence_number;
-        break;
-      }
+    // Convert Q8 to floating point.
+    sinfo.fraction_lost = static_cast<float>(loss) / (1 << 8);
+    // Convert samples to milliseconds.
+    if (codec.plfreq / 1000 > 0) {
+      sinfo.jitter_ms = jitter / (codec.plfreq / 1000);
     }
+  } else {
+    sinfo.fraction_lost = -1;
+    sinfo.jitter_ms = -1;
   }
+  // TODO(juberti): Figure out how to get remote packets_lost, ext_seqnum
+  sinfo.packets_lost = -1;
+  sinfo.ext_seqnum = -1;
 
   // Local speech level.
   sinfo.audio_level = (engine()->voe()->volume()->
@@ -2297,7 +2285,7 @@ bool WebRtcVoiceMediaChannel::GetStats(VoiceMediaInfo* info) {
   sinfo.echo_delay_std_ms = -1;
   if (engine()->voe()->processing()->GetEcMetricsStatus(echo_metrics_on) !=
       -1 && echo_metrics_on) {
-    // TODO(ajm): we may want to use VoECallReport::GetEchoMetricsSummary
+    // TODO(andrew): we may want to use VoECallReport::GetEchoMetricsSummary
     // here, but it appears to be unsuitable currently. Revisit after this is
     // investigated: http://b/issue?id=5666755
     int erl, erle, rerl, anlp;

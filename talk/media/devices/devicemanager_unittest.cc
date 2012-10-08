@@ -334,7 +334,8 @@ TEST(DeviceManagerTest, GetWindows) {
   scoped_ptr<DeviceManagerInterface> dm(DeviceManagerFactory::Create());
   std::vector<talk_base::WindowDescription> descriptions;
   EXPECT_TRUE(dm->Init());
-  if (!dm->GetWindows(&descriptions) || descriptions.empty()) {
+  EXPECT_TRUE(dm->GetWindows(&descriptions));
+  if (descriptions.empty()) {
     LOG(LS_INFO) << "skipping test: window capturing. Does not have any "
                  << "windows to capture.";
     return;
@@ -357,7 +358,8 @@ TEST(DeviceManagerTest, GetDesktops) {
   scoped_ptr<DeviceManagerInterface> dm(DeviceManagerFactory::Create());
   std::vector<talk_base::DesktopDescription> descriptions;
   EXPECT_TRUE(dm->Init());
-  if (!dm->GetDesktops(&descriptions) || descriptions.empty()) {
+  EXPECT_TRUE(dm->GetDesktops(&descriptions));
+  if (descriptions.empty()) {
     LOG(LS_INFO) << "skipping test: desktop capturing. Does not have any "
                  << "desktops to capture.";
     return;

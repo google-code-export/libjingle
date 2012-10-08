@@ -251,7 +251,7 @@ void CallClient::ParseLine(const std::string& line) {
         cricket::ScreencastId screencastid;
         cricket::Session* session = GetFirstSession();
         if (session && SelectFirstDesktopScreencastId(&screencastid)) {
-          call_->StartScreencast(
+          call_->AddScreencast(
               session, stream_name, screencast_ssrc_, screencastid, fps);
         }
       }
@@ -261,7 +261,7 @@ void CallClient::ParseLine(const std::string& line) {
 
       cricket::Session* session = GetFirstSession();
       if (session) {
-        call_->StopScreencast(session, stream_name, screencast_ssrc_);
+        call_->RemoveScreencast(session, stream_name, screencast_ssrc_);
         screencast_ssrc_ = 0;
       }
     } else if (command == "present") {
@@ -559,7 +559,7 @@ void CallClient::OnSessionState(cricket::Call* call,
       call_->AcceptSession(session, options);
 
       if (call_->has_video() && render_) {
-        RenderAllStreams(call, session, true);
+        RenderAllStreams(session, true);
       }
     } else {
       console_->PrintLine("Incoming call from '%s'", jid.Str().c_str());
@@ -916,7 +916,7 @@ void CallClient::TerminateAndRemoveSession(cricket::Call* call,
   for (std::vector<cricket::Session*>::iterator iter = call_sessions.begin();
        iter != call_sessions.end(); ++iter) {
     if ((*iter)->id() == id) {
-      RenderAllStreams(call, *iter, false);
+      RenderAllStreams(*iter, false);
       call_->TerminateSession(*iter);
       call_sessions.erase(iter);
       break;
@@ -1054,7 +1054,7 @@ void CallClient::Accept(const cricket::CallOptions& options) {
   media_client_->SetFocus(call_);
   if (call_->has_video() && render_) {
     call_->SetLocalRenderer(local_renderer_);
-    RenderAllStreams(call_, session, true);
+    RenderAllStreams(session, true);
   }
   if (call_->has_data()) {
     call_->SignalDataReceived.connect(this, &CallClient::OnDataReceived);
@@ -1399,36 +1399,32 @@ void CallClient::OnMediaStreamsUpdate(cricket::Call* call,
     }
 
     if (render_) {
-      RenderStreams(call, session, added.video(), true);
+      RenderStreams(session, added.video(), true);
     }
     SendViewRequest(call, session);
   }
 }
 
-void CallClient::RenderAllStreams(cricket::Call* call,
-                                  cricket::Session* session,
-                                  bool enable) {
+void CallClient::RenderAllStreams(cricket::Session* session, bool enable) {
   const std::vector<cricket::StreamParams>* video_streams =
-      call->GetVideoRecvStreams(session);
+      call_->GetVideoRecvStreams(session);
   if (video_streams) {
-    RenderStreams(call, session, *video_streams, enable);
+    RenderStreams(session, *video_streams, enable);
   }
 }
 
 void CallClient::RenderStreams(
-    cricket::Call* call,
     cricket::Session* session,
     const std::vector<cricket::StreamParams>& video_streams,
     bool enable) {
   std::vector<cricket::StreamParams>::const_iterator stream;
   for (stream = video_streams.begin(); stream != video_streams.end();
        ++stream) {
-    RenderStream(call, session, *stream, enable);
+    RenderStream(session, *stream, enable);
   }
 }
 
-void CallClient::RenderStream(cricket::Call* call,
-                              cricket::Session* session,
+void CallClient::RenderStream(cricket::Session* session,
                               const cricket::StreamParams& stream,
                               bool enable) {
   if (!stream.has_ssrcs()) {
@@ -1448,10 +1444,10 @@ void CallClient::RenderStream(cricket::Call* call,
       // Should have it now.
       iter = static_rendered_views_.find(std::make_pair(session, ssrc));
     }
-    call->SetVideoRenderer(session, ssrc, iter->second.renderer);
+    call_->SetVideoRenderer(session, ssrc, iter->second.renderer);
   } else {
     if (iter != static_rendered_views_.end()) {
-      call->SetVideoRenderer(session, ssrc, NULL);
+      call_->SetVideoRenderer(session, ssrc, NULL);
       RemoveStaticRenderedView(ssrc);
     }
   }

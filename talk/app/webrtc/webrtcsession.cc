@@ -197,11 +197,7 @@ WebRtcSession::~WebRtcSession() {
   }
 }
 
-bool WebRtcSession::Initialize(const MediaConstraintsInterface* constraints) {
-  // TODO(perkj): Take |constraints| into consideration. Return false if not all
-  // mandatory constraints can be fulfilled. Note that |constraints|
-  // can be null.
-
+bool WebRtcSession::Initialize() {
   // By default SRTP-SDES is enabled in WebRtc.
   set_secure_policy(cricket::SEC_REQUIRED);
   // Make sure SessionDescriptions only contains the StreamParams we negotiate.
@@ -330,11 +326,28 @@ bool WebRtcSession::SetLocalDescription(Action action,
     return false;
   }
 
-  if (!UpdateSessionState(action, cricket::CS_LOCAL, desc->description())) {
-    return false;
-  }
   // Kick starting the ice candidates allocation.
   StartCandidatesAllocation();
+
+  switch (action) {
+    case kOffer:
+      SetState(STATE_SENTINITIATE);
+      break;
+    case kAnswer:
+      // Remove channel and transport proxies, if MediaContentDescription is
+      // rejected in local session description.
+      RemoveUnusedChannelsAndTransports(desc->description());
+      if (!transport_muxed()) {
+        MaybeEnableMuxingSupport();
+      }
+      EnableChannels();
+      SetState(STATE_SENTACCEPT);
+      break;
+    case kPrAnswer:
+      EnableChannels();
+      SetState(STATE_SENTPRACCEPT);
+      break;
+  }
   return error() == cricket::BaseSession::ERROR_NONE;
 }
 
@@ -375,8 +388,31 @@ bool WebRtcSession::SetRemoteDescription(Action action,
   // is called.
 
   set_remote_description(desc->description()->Copy());
-  if (!UpdateSessionState(action, cricket::CS_REMOTE, desc->description())) {
-    return false;
+
+  switch (action) {
+    case kOffer:
+      SetState(STATE_RECEIVEDINITIATE);
+      // Pushing remote transport description information down to the
+      // transport channels.
+      PushdownRemoteTransportDescription();
+      break;
+    case kAnswer:
+      // Remove channel and transport proxies, if MediaContentDescription is
+      // rejected in remote session description.
+      RemoveUnusedChannelsAndTransports(desc->description());
+      if (!transport_muxed()) {
+        MaybeEnableMuxingSupport();
+      }
+      EnableChannels();
+      SetState(STATE_RECEIVEDACCEPT);
+      // Pushing remote transport description information down to the
+      // transport channels.
+      PushdownRemoteTransportDescription();
+      break;
+    case kPrAnswer:
+      EnableChannels();
+      SetState(STATE_RECEIVEDPRACCEPT);
+      break;
   }
 
   // Update remote MediaStreams.
@@ -397,45 +433,10 @@ bool WebRtcSession::SetRemoteDescription(Action action,
   return error() == cricket::BaseSession::ERROR_NONE;
 }
 
-bool WebRtcSession::UpdateSessionState(
-    Action action, cricket::ContentSource source,
-    const cricket::SessionDescription* desc) {
-  bool ret = false;
-  if (action == kOffer) {
-    if (PushdownTransportDescription(source, cricket::CA_OFFER)) {
-      SetState(source == cricket::CS_LOCAL ?
-        STATE_SENTINITIATE : STATE_RECEIVEDINITIATE);
-      ret = true;
-    }
-  } else if (action == kPrAnswer) {
-    if (PushdownTransportDescription(source, cricket::CA_PRANSWER)) {
-      EnableChannels();
-      SetState(source == cricket::CS_LOCAL ?
-          STATE_SENTPRACCEPT : STATE_RECEIVEDPRACCEPT);
-      ret = true;
-    }
-  } else if (action == kAnswer) {
-    // Remove channel and transport proxies, if MediaContentDescription is
-    // rejected in local session description.
-    RemoveUnusedChannelsAndTransports(desc);
-    if (!transport_muxed()) {
-      MaybeEnableMuxingSupport();
-    }
-    if (PushdownTransportDescription(source, cricket::CA_ANSWER)) {
-      EnableChannels();
-      SetState(source == cricket::CS_LOCAL ?
-          STATE_SENTACCEPT : STATE_RECEIVEDACCEPT);
-      ret = true;
-    }
-  }
-  return ret;
-}
-
 bool WebRtcSession::ProcessIceMessage(const IceCandidateInterface* candidate) {
   if (state() == STATE_INIT) {
      LOG(LS_ERROR) << "ProcessIceMessage: ICE candidates can't be added "
-                   << "without any offer (local or remote) "
-                   << "session description.";
+                   << "without any offer (local or remote) session description.";
      return false;
   }
 

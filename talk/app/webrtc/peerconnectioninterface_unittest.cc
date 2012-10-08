@@ -213,23 +213,20 @@ class PeerConnectionInterfaceTest : public testing::Test {
     port_allocator_factory_ = FakePortAllocatorFactory::Create();
 
     pc_factory_ = webrtc::CreatePeerConnectionFactory(
-        talk_base::Thread::Current(), talk_base::Thread::Current(), NULL);
+        talk_base::Thread::Current(), talk_base::Thread::Current(),
+        port_allocator_factory_.get(), NULL);
     ASSERT_TRUE(pc_factory_.get() != NULL);
   }
 
   void CreatePeerConnection() {
-    pc_ = pc_factory_->CreatePeerConnection(kStunConfiguration,
-                                            port_allocator_factory_.get(),
-                                            &observer_);
+    pc_ = pc_factory_->CreatePeerConnection(kStunConfiguration, &observer_);
     ASSERT_TRUE(pc_.get() != NULL);
     observer_.SetPeerConnectionInterface(pc_.get());
     EXPECT_EQ(PeerConnectionInterface::kNew, observer_.state_);
   }
 
   void CreatePeerConnectionWithInvalidConfiguration() {
-    pc_ = pc_factory_->CreatePeerConnection(kInvalidConfiguration,
-                                            port_allocator_factory_.get(),
-                                            &observer_);
+    pc_ = pc_factory_->CreatePeerConnection(kInvalidConfiguration, &observer_);
     ASSERT_TRUE(pc_.get() != NULL);
     EXPECT_EQ(0u, port_allocator_factory_->stun_configs().size());
     EXPECT_EQ(0u, port_allocator_factory_->turn_configs().size());
@@ -238,9 +235,7 @@ class PeerConnectionInterfaceTest : public testing::Test {
   }
 
   void CreatePeerConnectionWithDifferentConfigurations() {
-    pc_ = pc_factory_->CreatePeerConnection(kStunAddressOnly,
-                                            port_allocator_factory_.get(),
-                                            &observer_);
+    pc_ = pc_factory_->CreatePeerConnection(kStunAddressOnly, &observer_);
     EXPECT_EQ(1u, port_allocator_factory_->stun_configs().size());
     EXPECT_EQ(0u, port_allocator_factory_->turn_configs().size());
     EXPECT_EQ("address",
@@ -248,27 +243,21 @@ class PeerConnectionInterfaceTest : public testing::Test {
     EXPECT_EQ(kDefaultStunPort,
         port_allocator_factory_->stun_configs()[0].server.port());
 
-    pc_ = pc_factory_->CreatePeerConnection(kStunInvalidPort,
-                                            port_allocator_factory_.get(),
-                                            &observer_);
+    pc_ = pc_factory_->CreatePeerConnection(kStunInvalidPort, &observer_);
     EXPECT_EQ(0u, port_allocator_factory_->stun_configs().size());
     EXPECT_EQ(0u, port_allocator_factory_->turn_configs().size());
 
     pc_ = pc_factory_->CreatePeerConnection(kStunAddressPortAndMore1,
-                                            port_allocator_factory_.get(),
                                             &observer_);
     EXPECT_EQ(0u, port_allocator_factory_->stun_configs().size());
     EXPECT_EQ(0u, port_allocator_factory_->turn_configs().size());
 
     pc_ = pc_factory_->CreatePeerConnection(kStunAddressPortAndMore2,
-                                            port_allocator_factory_.get(),
                                             &observer_);
     EXPECT_EQ(0u, port_allocator_factory_->stun_configs().size());
     EXPECT_EQ(0u, port_allocator_factory_->turn_configs().size());
 
-    pc_ = pc_factory_->CreatePeerConnection(kTurnAddressOnly,
-                                            port_allocator_factory_.get(),
-                                            &observer_);
+    pc_ = pc_factory_->CreatePeerConnection(kTurnAddressOnly, &observer_);
     EXPECT_EQ(0u, port_allocator_factory_->stun_configs().size());
     EXPECT_EQ(1u, port_allocator_factory_->turn_configs().size());
     EXPECT_EQ("address",
@@ -276,20 +265,16 @@ class PeerConnectionInterfaceTest : public testing::Test {
     EXPECT_EQ(kDefaultStunPort,
         port_allocator_factory_->turn_configs()[0].server.port());
 
-    pc_ = pc_factory_->CreatePeerConnection(kTurnInvalidPort,
-                                            port_allocator_factory_.get(),
-                                            &observer_);
+    pc_ = pc_factory_->CreatePeerConnection(kTurnInvalidPort, &observer_);
     EXPECT_EQ(0u, port_allocator_factory_->stun_configs().size());
     EXPECT_EQ(0u, port_allocator_factory_->turn_configs().size());
 
     pc_ = pc_factory_->CreatePeerConnection(kTurnAddressPortAndMore1,
-                                            port_allocator_factory_.get(),
                                             &observer_);
     EXPECT_EQ(0u, port_allocator_factory_->stun_configs().size());
     EXPECT_EQ(0u, port_allocator_factory_->turn_configs().size());
 
     pc_ = pc_factory_->CreatePeerConnection(kTurnAddressPortAndMore2,
-                                            port_allocator_factory_.get(),
                                             &observer_);
     EXPECT_EQ(0u, port_allocator_factory_->stun_configs().size());
     EXPECT_EQ(0u, port_allocator_factory_->turn_configs().size());

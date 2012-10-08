@@ -89,7 +89,6 @@ class FakeWebRtcVideoEngine
           remb_receive_(false),
           rtp_offset_send_id_(0),
           rtp_offset_receive_id_(0),
-          transmission_smoothing_(false),
           nack_(false),
           hybrid_nack_fec_(false) {
       ssrcs_[0] = 0;  // default ssrc.
@@ -109,7 +108,6 @@ class FakeWebRtcVideoEngine
     bool remb_receive_;  // This channel receives video packets.
     int rtp_offset_send_id_;
     int rtp_offset_receive_id_;
-    bool transmission_smoothing_;
     bool nack_;
     bool hybrid_nack_fec_;
     std::vector<webrtc::VideoCodec> recv_codecs;
@@ -244,10 +242,6 @@ class FakeWebRtcVideoEngine
     WEBRTC_ASSERT_CHANNEL(channel);
     return channels_.find(channel)->second->rtp_offset_receive_id_;
   }
-  bool GetTransmissionSmoothingStatus(int channel) {
-    WEBRTC_ASSERT_CHANNEL(channel);
-    return channels_.find(channel)->second->transmission_smoothing_;
-  }
   bool GetNackStatus(int channel) const {
     WEBRTC_ASSERT_CHANNEL(channel);
     return channels_.find(channel)->second->nack_;
@@ -325,11 +319,11 @@ class FakeWebRtcVideoEngine
   WEBRTC_STUB(LastError, ());
 
   // webrtc::ViECodec
-  WEBRTC_FUNC_CONST(NumberOfCodecs, ()) {
+  WEBRTC_FUNC(NumberOfCodecs, ()) const {
     return num_codecs_;
   };
-  WEBRTC_FUNC_CONST(GetCodec, (const unsigned char list_number,
-                               webrtc::VideoCodec& out_codec)) {
+  WEBRTC_FUNC(GetCodec, (const unsigned char list_number,
+                         webrtc::VideoCodec& out_codec)) const {
     if (list_number >= NumberOfCodecs()) {
       return -1;
     }
@@ -364,8 +358,8 @@ class FakeWebRtcVideoEngine
     ++num_set_send_codecs_;
     return 0;
   };
-  WEBRTC_FUNC_CONST(GetSendCodec, (const int channel,
-                                   webrtc::VideoCodec& codec)) {  // NOLINT
+  WEBRTC_FUNC(GetSendCodec, (const int channel,
+                             webrtc::VideoCodec& codec)) const {  // NOLINT
     WEBRTC_CHECK_CHANNEL(channel);
     codec = channels_.find(channel)->second->send_codec;
     return 0;
@@ -400,6 +394,7 @@ class FakeWebRtcVideoEngine
   WEBRTC_STUB(DeregisterDecoderObserver, (const int));
   WEBRTC_STUB(SendKeyFrame, (const int));
   WEBRTC_STUB(WaitForFirstKeyFrame, (const int, const bool));
+  WEBRTC_STUB(SetInverseH263Logic, (int, bool));
 
   // webrtc::ViECapture
   WEBRTC_STUB(NumberOfCaptureDevices, ());
@@ -531,9 +526,6 @@ class FakeWebRtcVideoEngine
     }
     return -1;
   }
-#ifdef USE_WEBRTC_DEV_BRANCH
-  WEBRTC_STUB(SetExpectedRenderDelay, (int render_id, int render_delay));
-#endif
   WEBRTC_STUB(ConfigureRender, (int, const unsigned int, const float,
       const float, const float, const float));
   WEBRTC_STUB(MirrorRenderStream, (const int, const bool, const bool,
@@ -556,8 +548,10 @@ class FakeWebRtcVideoEngine
   WEBRTC_FUNC(SetLocalSSRC, (const int channel,
                              const unsigned int ssrc,
                              const webrtc::StreamType usage,
-                             const unsigned char idx)) {
+                             const unsigned char simulcast_idx)) {
+    // default simulcast_idx is 0.
     WEBRTC_CHECK_CHANNEL(channel);
+    channels_[channel]->ssrcs_[simulcast_idx] = ssrc;
     return 0;
   }
   WEBRTC_STUB_CONST(SetRemoteSSRCType, (const int,
@@ -629,10 +623,6 @@ class FakeWebRtcVideoEngine
     channels_[channel]->remb_receive_ = receive;
     return 0;
   }
-#ifdef USE_WEBRTC_313_BRANCH
-  WEBRTC_STUB(SetBandwidthEstimationMode,
-              (webrtc::BandwidthEstimationMode mode));
-#endif
   WEBRTC_FUNC(SetTMMBRStatus, (const int channel, const bool enable)) {
     WEBRTC_CHECK_CHANNEL(channel);
     channels_[channel]->tmmbr_ = enable;
@@ -650,12 +640,8 @@ class FakeWebRtcVideoEngine
     channels_[channel]->rtp_offset_receive_id_ = (enable) ? id : 0;
     return 0;
   }
-#ifdef USE_WEBRTC_313_BRANCH
-  WEBRTC_FUNC(SetTransmissionSmoothingStatus, (int channel, bool enable)) {
-    WEBRTC_CHECK_CHANNEL(channel);
-    channels_[channel]->transmission_smoothing_ = enable;
-    return 0;
-  }
+#ifdef USE_WEBRTC_DEV_BRANCH
+  WEBRTC_STUB(SetTransmissionSmoothingStatus, (int video_channel, bool enable));
 #endif
   WEBRTC_STUB_CONST(GetReceivedRTCPStatistics, (const int, unsigned short&,
       unsigned int&, unsigned int&, unsigned int&, int&));
@@ -670,6 +656,10 @@ class FakeWebRtcVideoEngine
   WEBRTC_STUB_CONST(SetOverUseDetectorOptions,
       (const webrtc::OverUseDetectorOptions&));
 
+  WEBRTC_STUB(SetRTPKeepAliveStatus, (const int, bool, const int,
+      const unsigned int));
+  WEBRTC_STUB_CONST(GetRTPKeepAliveStatus,
+                    (const int, bool&, int&, unsigned int&));
   WEBRTC_STUB(StartRTPDump, (const int, const char*, webrtc::RTPDirections));
   WEBRTC_STUB(StopRTPDump, (const int, webrtc::RTPDirections));
   WEBRTC_STUB(RegisterRTPObserver, (const int, webrtc::ViERTPObserver&));

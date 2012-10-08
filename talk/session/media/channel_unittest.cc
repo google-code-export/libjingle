@@ -91,9 +91,7 @@ class FakeScreenCaptureFactory
     : public cricket::VideoChannel::ScreenCapturerFactory,
       public sigslot::has_slots<> {
  public:
-  FakeScreenCaptureFactory()
-      : window_capturer_(NULL),
-        capture_state_(cricket::CS_STOPPED) {}
+  FakeScreenCaptureFactory() : window_capturer_(NULL) {}
 
   virtual cricket::VideoCapturer* CreateScreenCapturer(
       const ScreencastId& window) {
@@ -106,15 +104,10 @@ class FakeScreenCaptureFactory
     window_capturer_->SignalDestroyed.connect(
         this,
         &FakeScreenCaptureFactory::OnWindowCapturerDestroyed);
-    window_capturer_->SignalStateChange.connect(
-        this,
-        &FakeScreenCaptureFactory::OnStateChange);
     return window_capturer_;
   }
 
   cricket::FakeVideoCapturer* window_capturer() { return window_capturer_; }
-
-  cricket::CaptureState capture_state() { return capture_state_; }
 
  private:
   void OnWindowCapturerDestroyed(cricket::FakeVideoCapturer* capturer) {
@@ -122,12 +115,8 @@ class FakeScreenCaptureFactory
       window_capturer_ = NULL;
     }
   }
-  void OnStateChange(cricket::VideoCapturer*, cricket::CaptureState state) {
-    capture_state_ = state;
-  }
 
   cricket::FakeVideoCapturer* window_capturer_;
-  cricket::CaptureState capture_state_;
 };
 
 // Controls how long we wait for a session to send messages that we
@@ -2302,10 +2291,8 @@ TEST_F(VideoChannelTest, TestScreencastEvents) {
   channel1_->SignalScreencastWindowEvent.connect(
       &catcher,
       &cricket::ScreencastEventCatcher::OnEvent);
-  EXPECT_TRUE(channel1_->AddScreencast(0, ScreencastId(WindowId(0))) != NULL);
+  EXPECT_TRUE(channel1_->AddScreencast(0, ScreencastId(WindowId(0)), 5));
   ASSERT_TRUE(screencapture_factory->window_capturer() != NULL);
-  EXPECT_EQ_WAIT(cricket::CS_STOPPED, screencapture_factory->capture_state(),
-                 kTimeoutMs);
   screencapture_factory->window_capturer()->SignalStateChange(
       screencapture_factory->window_capturer(), cricket::CS_PAUSED);
   EXPECT_EQ_WAIT(talk_base::WE_MINIMIZE, catcher.event(), kTimeoutMs);

@@ -38,6 +38,7 @@ namespace cricket {
 
 static TransportProtocol kDefaultProtocol = ICEPROTO_GOOGLE;
 static const char* kDefaultDigestAlg = talk_base::DIGEST_SHA_256;
+static const char kGoogleIceOption[] = "google-ice";
 
 TransportDescriptionFactory::TransportDescriptionFactory()
     : protocol_(kDefaultProtocol),
@@ -55,7 +56,7 @@ TransportDescription* TransportDescriptionFactory::CreateOffer(
     desc->transport_type = NS_JINGLE_ICE_UDP;
   } else if (protocol_ == ICEPROTO_HYBRID) {
     desc->transport_type = NS_JINGLE_ICE_UDP;
-    desc->AddOption(ICE_OPTION_GICE);
+    desc->AddOption(kGoogleIceOption);
   } else if (protocol_ == ICEPROTO_GOOGLE) {
     desc->transport_type = NS_GINGLE_P2P;
   }
@@ -94,7 +95,7 @@ TransportDescription* TransportDescriptionFactory::CreateAnswer(
     // Offer is ICE or hybrid, we support ICE or hybrid: use ICE.
     desc->transport_type = NS_JINGLE_ICE_UDP;
   } else if (offer && offer->transport_type == NS_JINGLE_ICE_UDP &&
-             offer->HasOption(ICE_OPTION_GICE) &&
+             offer->HasOption(kGoogleIceOption) &&
              protocol_ == ICEPROTO_GOOGLE) {
     desc->transport_type = NS_GINGLE_P2P;
     // Offer is hybrid, we support GICE: use GICE.

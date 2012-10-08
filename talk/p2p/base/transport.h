@@ -54,7 +54,6 @@
 #include "talk/base/sigslot.h"
 #include "talk/p2p/base/candidate.h"
 #include "talk/p2p/base/constants.h"
-#include "talk/p2p/base/sessiondescription.h"
 #include "talk/p2p/base/transportinfo.h"
 
 namespace talk_base {
@@ -185,8 +184,6 @@ class Transport : public talk_base::MessageHandler,
   void SetTiebreaker(uint64 tiebreaker) { tiebreaker_ = tiebreaker; }
   uint64 tiebreaker() { return tiebreaker_; }
 
-  TransportProtocol protocol() const { return protocol_; }
-
   // Create, destroy, and lookup the channels of this type by their components.
   TransportChannelImpl* CreateChannel(int component);
   // Note: GetChannel may lead to race conditions, since the mutex is not held
@@ -201,12 +198,10 @@ class Transport : public talk_base::MessageHandler,
 
   // Set the local TransportDescription to be used by TransportChannels.
   // This should be called before ConnectChannels().
-  bool SetLocalTransportDescription(const TransportDescription& description,
-                                    ContentAction action);
+  bool SetLocalTransportDescription(const TransportDescription& description);
 
   // Set the remote TransportDescription to be used by TransportChannels.
-  bool SetRemoteTransportDescription(const TransportDescription& description,
-                                     ContentAction action);
+  bool SetRemoteTransportDescription(const TransportDescription& description);
 
   // Tells all current and future channels to start connecting.  When the first
   // channel begins connecting, the following signal is raised.
@@ -348,15 +343,10 @@ class Transport : public talk_base::MessageHandler,
   void OnChannelCandidateReady_s();
 
   void SetRole_w();
-  bool SetLocalTransportDescription_w(const TransportDescription& desc,
-                                      ContentAction action);
-  bool SetRemoteTransportDescription_w(const TransportDescription& desc,
-                                       ContentAction action);
+  bool SetLocalTransportDescription_w(const TransportDescription& desc);
+  bool SetRemoteTransportDescription_w(const TransportDescription& desc);
   bool ApplyLocalTransportDescription_w(TransportChannelImpl* channel);
   bool ApplyRemoteTransportDescription_w(TransportChannelImpl* channel);
-  bool NegotiateTransportDescription_w(const TransportDescription* offer,
-                                       const TransportDescription* answer);
-  bool SetTransportType_w();
 
   talk_base::Thread* signaling_thread_;
   talk_base::Thread* worker_thread_;
@@ -369,7 +359,6 @@ class Transport : public talk_base::MessageHandler,
   bool connect_requested_;
   TransportRole role_;
   uint64 tiebreaker_;
-  TransportProtocol protocol_;
   talk_base::scoped_ptr<TransportDescription> local_description_;
   talk_base::scoped_ptr<TransportDescription> remote_description_;
 

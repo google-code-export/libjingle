@@ -54,7 +54,6 @@
 #include "talk/media/webrtc/webrtcvoe.h"
 #include "talk/media/webrtc/webrtcvoiceengine.h"
 
-
 namespace cricket {
 
 
@@ -490,32 +489,34 @@ const WebRtcVideoEngine::VideoCodecPref
     {kFecPayloadName, 102, 2},
 };
 
+static const int64 kNsPerFrame = 33333333;  // 30fps
+
 // The formats are sorted by the descending order of width. We use the order to
 // find the next format for CPU and bandwidth adaptation.
 const VideoFormatPod WebRtcVideoEngine::kVideoFormats[] = {
-  {1280, 800, FPS_TO_INTERVAL(30), FOURCC_ANY},
-  {1280, 720, FPS_TO_INTERVAL(30), FOURCC_ANY},
-  {960, 600, FPS_TO_INTERVAL(30), FOURCC_ANY},
-  {960, 540, FPS_TO_INTERVAL(30), FOURCC_ANY},
-  {640, 400, FPS_TO_INTERVAL(30), FOURCC_ANY},
-  {640, 360, FPS_TO_INTERVAL(30), FOURCC_ANY},
-  {640, 480, FPS_TO_INTERVAL(30), FOURCC_ANY},
-  {480, 300, FPS_TO_INTERVAL(30), FOURCC_ANY},
-  {480, 270, FPS_TO_INTERVAL(30), FOURCC_ANY},
-  {480, 360, FPS_TO_INTERVAL(30), FOURCC_ANY},
-  {320, 200, FPS_TO_INTERVAL(30), FOURCC_ANY},
-  {320, 180, FPS_TO_INTERVAL(30), FOURCC_ANY},
-  {320, 240, FPS_TO_INTERVAL(30), FOURCC_ANY},
-  {240, 150, FPS_TO_INTERVAL(30), FOURCC_ANY},
-  {240, 135, FPS_TO_INTERVAL(30), FOURCC_ANY},
-  {240, 180, FPS_TO_INTERVAL(30), FOURCC_ANY},
-  {160, 100, FPS_TO_INTERVAL(30), FOURCC_ANY},
-  {160, 90, FPS_TO_INTERVAL(30), FOURCC_ANY},
-  {160, 120, FPS_TO_INTERVAL(30), FOURCC_ANY},
+  {1280, 800, kNsPerFrame, FOURCC_ANY},
+  {1280, 720, kNsPerFrame, FOURCC_ANY},
+  {960, 600, kNsPerFrame, FOURCC_ANY},
+  {960, 540, kNsPerFrame, FOURCC_ANY},
+  {640, 400, kNsPerFrame, FOURCC_ANY},
+  {640, 360, kNsPerFrame, FOURCC_ANY},
+  {640, 480, kNsPerFrame, FOURCC_ANY},
+  {480, 300, kNsPerFrame, FOURCC_ANY},
+  {480, 270, kNsPerFrame, FOURCC_ANY},
+  {480, 360, kNsPerFrame, FOURCC_ANY},
+  {320, 200, kNsPerFrame, FOURCC_ANY},
+  {320, 180, kNsPerFrame, FOURCC_ANY},
+  {320, 240, kNsPerFrame, FOURCC_ANY},
+  {240, 150, kNsPerFrame, FOURCC_ANY},
+  {240, 135, kNsPerFrame, FOURCC_ANY},
+  {240, 180, kNsPerFrame, FOURCC_ANY},
+  {160, 100, kNsPerFrame, FOURCC_ANY},
+  {160, 90, kNsPerFrame, FOURCC_ANY},
+  {160, 120, kNsPerFrame, FOURCC_ANY},
 };
 
 const VideoFormatPod WebRtcVideoEngine::kDefaultVideoFormat =
-  {640, 400, FPS_TO_INTERVAL(30), FOURCC_ANY};
+    {640, 400, kNsPerFrame, FOURCC_ANY};
 
 static void UpdateVideoCodec(const cricket::VideoFormat& video_format,
                              webrtc::VideoCodec* target_codec) {
@@ -523,7 +524,14 @@ static void UpdateVideoCodec(const cricket::VideoFormat& video_format,
     return;
   }
   target_codec->width = video_format.width;
+  // Resolution needs to be divisible by 2.
+  if (target_codec->width & 0x1) {
+    target_codec->width -= 1;
+  }
   target_codec->height = video_format.height;
+  if (target_codec->height & 0x1) {
+    target_codec->height -= 1;
+  }
   target_codec->maxFramerate = cricket::VideoFormat::IntervalToFps(
       video_format.interval);
 }
@@ -646,7 +654,6 @@ bool WebRtcVideoEngine::InitVideoEngine() {
     LOG_RTCERR0(RegisterVideoRenderModule);
     return false;
   }
-
 
   initialized_ = true;
   return true;
@@ -1715,6 +1722,7 @@ bool WebRtcVideoMediaChannel::SendIntraFrame() {
   return success;
 }
 
+
 bool WebRtcVideoMediaChannel::IsOneSsrcStream(const StreamParams& sp) {
   return (sp.ssrcs.size() == 1 && sp.ssrc_groups.size() == 0);
 }
@@ -2321,11 +2329,6 @@ bool WebRtcVideoMediaChannel::SetOptions(int options) {
   bool denoiser_changed = (options_ & OPT_VIDEO_NOISE_REDUCTION) !=
       (options & OPT_VIDEO_NOISE_REDUCTION);
 
-#ifdef USE_WEBRTC_313_BRANCH
-  bool leaky_bucket_changed = (options_ & OPT_VIDEO_LEAKY_BUCKET) !=
-      (options & OPT_VIDEO_LEAKY_BUCKET);
-#endif
-
   // Save the options, to be interpreted where appropriate.
   options_ = options;
 
@@ -2346,19 +2349,6 @@ bool WebRtcVideoMediaChannel::SetOptions(int options) {
     }
     LogSendCodecChange("SetOptions()");
   }
-#ifdef USE_WEBRTC_313_BRANCH
-  if (leaky_bucket_changed) {
-    bool enable_leaky_bucket = IsOptionSet(OPT_VIDEO_LEAKY_BUCKET);
-    for (SendChannelMap::iterator it = send_channels_.begin();
-         it != send_channels_.end(); ++it) {
-      if (engine()->vie()->rtp()->SetTransmissionSmoothingStatus(
-          it->second->channel_id(), enable_leaky_bucket) != 0) {
-        LOG_RTCERR2(SetTransmissionSmoothingStatus, it->second->channel_id(),
-                    enable_leaky_bucket);
-      }
-    }
-  }
-#endif
   return true;
 }
 
@@ -2711,16 +2701,6 @@ bool WebRtcVideoMediaChannel::ConfigureSending(int channel_id,
     }
   }
 
-#ifdef USE_WEBRTC_313_BRANCH
-  if (IsOptionSet(OPT_VIDEO_LEAKY_BUCKET)) {
-    if (engine()->vie()->rtp()->SetTransmissionSmoothingStatus(channel_id,
-                                                               true) != 0) {
-      LOG_RTCERR2(SetTransmissionSmoothingStatus, channel_id, true);
-      return false;
-    }
-  }
-#endif
-
   if (!SetNackFec(channel_id, send_red_type_, send_fec_type_)) {
     // Logged in SetNackFec. Don't spam the logs.
     return false;
@@ -2771,6 +2751,13 @@ bool WebRtcVideoMediaChannel::SetSendCodec(const webrtc::VideoCodec& codec,
     // All SetSendCodec calls were successful. Update the global state
     // accordingly.
     send_codec_.reset(new webrtc::VideoCodec(codec));
+    // Resolution needs to be divisible by 2.
+    if (send_codec_->width & 0x1) {
+      send_codec_->width -= 1;
+    }
+    if (send_codec_->height & 0x1) {
+      send_codec_->height -= 1;
+    }
     send_min_bitrate_ = min_bitrate;
     send_start_bitrate_ = start_bitrate;
     send_max_bitrate_ = max_bitrate;
