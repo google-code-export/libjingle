@@ -217,14 +217,8 @@ bool HybridVideoMediaChannel::SetSend(bool send) {
 
 bool HybridVideoMediaChannel::SetCapturer(uint32 ssrc,
                                           VideoCapturer* capturer) {
-  bool ret = true;
-  if (channel1_.get()) {
-    ret = channel1_->SetCapturer(ssrc, capturer);
-  }
-  if (channel2_.get() && ret) {
-    ret = channel2_->SetCapturer(ssrc, capturer);
-  }
-  return ret;
+  return active_channel_ &&
+      active_channel_->SetCapturer(ssrc, capturer);
 }
 
 bool HybridVideoMediaChannel::AddSendStream(const StreamParams& sp) {

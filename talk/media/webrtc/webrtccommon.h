@@ -29,7 +29,11 @@
 #ifndef TALK_MEDIA_WEBRTCCOMMON_H_
 #define TALK_MEDIA_WEBRTCCOMMON_H_
 
-#include "webrtc/common_types.h"
+#ifdef WEBRTC_RELATIVE_PATH
+#include "common_types.h"
+#else
+#include "third_party/webrtc/common_types.h"
+#endif  // WEBRTC_RELATIVE_PATH
 
 namespace cricket {
 

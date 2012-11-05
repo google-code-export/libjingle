@@ -55,7 +55,6 @@
 
 static const uint32 kTimeout = 5000U;
 static const uint32 kSsrc = 1234u;
-static const uint32 kRtxSsrc = 4321u;
 static const uint32 kSsrcs4[] = {1, 2, 3, 4};
 
 inline bool IsEqualRes(const cricket::VideoCodec& a, int w, int h, int fps) {
@@ -558,10 +557,6 @@ class VideoMediaChannelTest : public testing::Test,
 
   virtual cricket::VideoCodec DefaultCodec() = 0;
 
-  virtual cricket::StreamParams DefaultSendStreamParams() {
-    return cricket::StreamParams::CreateLegacy(kSsrc);
-  }
-
   virtual void SetUp() {
     cricket::Device device("test", "device");
     EXPECT_TRUE(engine_.Init());
@@ -576,7 +571,8 @@ class VideoMediaChannelTest : public testing::Test,
     SetRendererAsDefault();
     media_error_ = cricket::VideoMediaChannel::ERROR_NONE;
     channel_->SetRecvCodecs(engine_.codecs());
-    EXPECT_TRUE(channel_->AddSendStream(DefaultSendStreamParams()));
+    EXPECT_TRUE(channel_->AddSendStream(
+        cricket::StreamParams::CreateLegacy(kSsrc)));
   }
   void SetUpSecondStream() {
     EXPECT_TRUE(channel_->AddRecvStream(

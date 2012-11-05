@@ -2117,12 +2117,8 @@ bool WebRtcVideoMediaChannel::SetCapturer(uint32 ssrc,
   if (!send_channel) {
     return false;
   }
-  VideoCapturer* old_capturer = send_channel->video_capturer();
-  if (send_channel->sending() && !old_capturer) {
+  if (send_channel->sending() && !send_channel->video_capturer()) {
     engine_->DecrementFrameListeners();
-  }
-  if (old_capturer) {
-    old_capturer->SignalFrameCaptured.disconnect(this);
   }
   send_channel->set_video_capturer(capturer);
   capturer->SignalFrameCaptured.connect(

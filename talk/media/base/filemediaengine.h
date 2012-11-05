@@ -137,9 +137,6 @@ class FileMediaEngine : public MediaEngineInterface {
                                         MediaProcessorDirection direction) {
     return true;
   }
-  VideoFormat GetStartCaptureFormat() const {
-    return VideoFormat();
-  }
 
  private:
   std::string voice_input_filename_;

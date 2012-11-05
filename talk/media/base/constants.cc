@@ -31,13 +31,8 @@
 
 namespace cricket {
 
-const int kVideoCodecClockrate = 90000;
-const int kDataCodecClockrate = 90000;
-const int kDataMaxBandwidth = 30720;  // bps
-
-const char* kRtxCodecName = "rtx";
-
-const char* kCodecParamAssociatedPayloadType = "apt";
-
+extern const int kVideoCodecClockrate = 90000;
+extern const int kDataCodecClockrate = 90000;
+extern const int kDataMaxBandwidth = 30720;  // bps
 
 }  // namespace cricket

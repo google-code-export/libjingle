@@ -26,7 +26,6 @@
 #include "talk/base/gunit.h"
 #include "talk/base/logging.h"
 #include "talk/base/thread.h"
-#include "talk/media/base/fakecapturemanager.h"
 #include "talk/media/base/fakemediaengine.h"
 #include "talk/media/base/fakemediaprocessor.h"
 #include "talk/media/base/nullvideorenderer.h"
@@ -36,16 +35,15 @@
 
 class ChannelManagerTest : public testing::Test {
  protected:
-  ChannelManagerTest() : fme_(NULL), fdm_(NULL), fcm_(NULL), cm_(NULL) {
+  ChannelManagerTest() : fme_(NULL), fdm_(NULL), cm_(NULL) {
   }
 
   virtual void SetUp() {
     fme_ = new cricket::FakeMediaEngine();
     fdme_ = new cricket::FakeDataEngine();
     fdm_ = new cricket::FakeDeviceManager();
-    fcm_ = new cricket::FakeCaptureManager();
     cm_ = new cricket::ChannelManager(
-        fme_, fdme_, fdm_, fcm_, talk_base::Thread::Current());
+        fme_, fdme_, fdm_, talk_base::Thread::Current());
     session_ = new cricket::FakeSession(true);
 
     std::vector<std::string> in_device_list, out_device_list, vid_device_list;
@@ -65,7 +63,6 @@ class ChannelManagerTest : public testing::Test {
     delete cm_;
     cm_ = NULL;
     fdm_ = NULL;
-    fcm_ = NULL;
     fdme_ = NULL;
     fme_ = NULL;
   }
@@ -74,7 +71,6 @@ class ChannelManagerTest : public testing::Test {
   cricket::FakeMediaEngine* fme_;
   cricket::FakeDataEngine* fdme_;
   cricket::FakeDeviceManager* fdm_;
-  cricket::FakeCaptureManager* fcm_;
   cricket::ChannelManager* cm_;
   cricket::FakeSession* session_;
 };
