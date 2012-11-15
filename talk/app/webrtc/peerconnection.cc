@@ -351,10 +351,11 @@ bool PeerConnection::DoInitialize(
   port_allocator_.reset(
       allocator_factory->CreatePortAllocator(stun_config, turn_config));
   // To handle both internal and externally created port allocator, we will
-  // enable BUNDLE here.
+  // enable BUNDLE here. Also enabling TURN and disable legacy relay service.
   port_allocator_->set_flags(cricket::PORTALLOCATOR_ENABLE_BUNDLE |
                              cricket::PORTALLOCATOR_ENABLE_SHARED_UFRAG |
                              cricket::PORTALLOCATOR_ENABLE_SHARED_SOCKET |
+                             cricket::PORTALLOCATOR_DISABLE_RELAY |
                              cricket::PORTALLOCATOR_ENABLE_TURN);
 
   mediastream_signaling_.reset(new MediaStreamSignaling(
