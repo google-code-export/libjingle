@@ -205,12 +205,28 @@ class BasicPortAllocatorSession : public PortAllocatorSession,
   std::vector<PortConfiguration*> configs_;
   std::vector<AllocationSequence*> sequences_;
 
+  enum PortState {
+    STATE_INIT,   // No candidates allocated yet.
+    STATE_READY,  // All candidates allocated and ready for process.
+    STATE_ERROR   // Error in gathering candidates.
+  };
+
   struct PortData {
+    PortData() : port(NULL), sequence(NULL), state(STATE_INIT) {}
+    PortData(Port* port, AllocationSequence* seq)
+        : port(port), sequence(seq), state(STATE_INIT) {
+    }
+
     Port* port;
     AllocationSequence* sequence;
-    bool ready;
+    PortState state;
 
     bool operator==(Port* rhs) const { return (port == rhs); }
+    bool ready() const { return state == STATE_READY; }
+    bool allocation_complete() const {
+      // Returns true if candidates allocation is success or failure.
+      return ((state == STATE_READY) || (state == STATE_ERROR));
+    }
   };
   std::vector<PortData> ports_;
 
