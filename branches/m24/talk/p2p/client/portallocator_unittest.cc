@@ -130,7 +130,8 @@ class PortAllocatorTest : public testing::Test, public sigslot::has_slots<> {
                              const SocketAddress& addr) {
     return (c.component() == component && c.type() == type &&
         c.protocol() == proto && c.address().ipaddr() == addr.ipaddr() &&
-        (addr.port() == 0 || (c.address().port() == addr.port())));
+        ((addr.port() == 0 && (c.address().port() != 0)) ||
+        (c.address().port() == addr.port())));
   }
   static bool CheckPort(const talk_base::SocketAddress& addr,
                         int min_port, int max_port) {
@@ -470,6 +471,7 @@ TEST_F(PortAllocatorTest, TestEnableSharedUfrag) {
   EXPECT_EQ(kIceUfrag0, candidates_[1].username());
   EXPECT_EQ(kIcePwd0, candidates_[0].password());
   EXPECT_EQ(kIcePwd0, candidates_[1].password());
+  EXPECT_TRUE(candidate_allocation_done_);
 }
 
 // Test that when the PORTALLOCATOR_ENABLE_SHARED_UFRAG isn't enabled we got
@@ -493,6 +495,25 @@ TEST_F(PortAllocatorTest, TestDisableSharedUfrag) {
   EXPECT_NE(kIcePwd0, candidates_[0].password());
   EXPECT_NE(kIcePwd0, candidates_[1].password());
   EXPECT_NE(candidates_[0].password(), candidates_[1].password());
+  EXPECT_TRUE(candidate_allocation_done_);
+}
+
+// Test that when PORTALLOCATOR_ENABLE_SHARED_SOCKET is enabled only one port
+// is allocated for udp and stun and there can be one candidate (local)
+// if stun candidate is same as local candidate which will be the case in a
+// public network like the below test.
+TEST_F(PortAllocatorTest, TestEnableSharedSocket) {
+  allocator().set_flags(allocator().flags() |
+                        cricket::PORTALLOCATOR_ENABLE_SHARED_UFRAG |
+                        cricket::PORTALLOCATOR_ENABLE_SHARED_SOCKET);
+  AddInterface(kClientAddr);
+  EXPECT_TRUE(CreateSession(cricket::ICE_CANDIDATE_COMPONENT_RTP));
+  session_->GetInitialPorts();
+  ASSERT_EQ_WAIT(1U, candidates_.size(), 1000);
+  EXPECT_PRED5(CheckCandidate, candidates_[0],
+      cricket::ICE_CANDIDATE_COMPONENT_RTP, "local", "udp", kClientAddr);
+  EXPECT_EQ(1U, ports_.size());
+  EXPECT_TRUE(candidate_allocation_done_);
 }
 
 // Test that the httpportallocator correctly maintains its lists of stun and
