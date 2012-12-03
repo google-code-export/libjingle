@@ -1506,6 +1506,7 @@ bool WebRtcVideoMediaChannel::RemoveSendStream(uint32 ssrc) {
   }
   // The receive channels depend on the default channel, recycle it instead.
   if (IsDefaultChannel(channel_id)) {
+    SetCapturer(GetDefaultChannelSsrc(), NULL);
     send_channel->ClearStreamParams();
   } else {
     return DeleteSendChannel(ssrc_key);
