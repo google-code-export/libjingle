@@ -361,6 +361,7 @@ class MediaSessionDescriptionFactory {
 };
 
 // Convenience functions.
+bool IsMediaContent(const ContentInfo* content);
 bool IsAudioContent(const ContentInfo* content);
 bool IsVideoContent(const ContentInfo* content);
 bool IsDataContent(const ContentInfo* content);

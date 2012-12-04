@@ -2023,3 +2023,45 @@ TEST_F(WebRtcSessionTest, TestIceStartAfterSetLocalDescriptionOnly) {
   EXPECT_TRUE_WAIT(observer_.oncandidatesready_, kIceCandidatesTimeout);
 }
 
+// This test verifies that crypto parameter is updated in local session
+// description as per security policy set in MediaSessionDescriptionFactory.
+TEST_F(WebRtcSessionTest, TestCryptoAfterSetLocalDescription) {
+  WebRtcSessionTest::Init();
+  talk_base::scoped_ptr<SessionDescriptionInterface> offer(
+      session_->CreateOffer(MediaHints()));
+
+  // Making sure SetLocalDescription correctly sets crypto value in
+  // SessionDescription object after de-serialization of sdp string. The value
+  // will be set as per MediaSessionDescriptionFactory.
+  std::string offer_str;
+  offer->ToString(&offer_str);
+  JsepSessionDescription *jsep_offer_str =
+      new JsepSessionDescription(JsepSessionDescription::kOffer);
+  EXPECT_TRUE((jsep_offer_str)->Initialize(offer_str));
+  EXPECT_TRUE(session_->SetLocalDescription(JsepInterface::kOffer,
+                                            jsep_offer_str));
+  EXPECT_TRUE(session_->voice_channel()->secure_required());
+  EXPECT_TRUE(session_->video_channel()->secure_required());
+}
+
+// This test verifies the crypto parameter when security is disabled.
+TEST_F(WebRtcSessionTest, TestCryptoAfterSetLocalDescriptionWithDisabled) {
+  WebRtcSessionTest::Init();
+  session_->set_secure_policy(cricket::SEC_DISABLED);
+  talk_base::scoped_ptr<SessionDescriptionInterface> offer(
+      session_->CreateOffer(MediaHints()));
+
+  // Making sure SetLocalDescription correctly sets crypto value in
+  // SessionDescription object after de-serialization of sdp string. The value
+  // will be set as per MediaSessionDescriptionFactory.
+  std::string offer_str;
+  offer->ToString(&offer_str);
+  JsepSessionDescription *jsep_offer_str =
+      new JsepSessionDescription(JsepSessionDescription::kOffer);
+  EXPECT_TRUE((jsep_offer_str)->Initialize(offer_str));
+  EXPECT_TRUE(session_->SetLocalDescription(JsepInterface::kOffer,
+                                            jsep_offer_str));
+  EXPECT_FALSE(session_->voice_channel()->secure_required());
+  EXPECT_FALSE(session_->video_channel()->secure_required());
+}
+

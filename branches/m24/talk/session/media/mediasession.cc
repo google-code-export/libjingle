@@ -47,6 +47,16 @@ namespace cricket {
 
 using talk_base::scoped_ptr;
 
+static bool IsMediaContentOfType(const ContentInfo* content, MediaType media_type) {
+  if (!IsMediaContent(content)) {
+    return false;
+  }
+
+  const MediaContentDescription* media =
+      static_cast<const MediaContentDescription*>(content->description);
+  return media->type() == media_type;
+}
+
 static bool CreateCryptoParams(int tag, const std::string& cipher,
                                CryptoParams *out) {
   std::string key;
@@ -898,33 +908,28 @@ bool MediaSessionDescriptionFactory::AddTransportAnswer(
       answer_desc->AddTransportInfo(TransportInfo(content_name, *new_tdesc)));
 }
 
-static bool IsMediaContent(const ContentInfo* content, MediaType media_type) {
-  if (content == NULL || content->type != NS_JINGLE_RTP) {
-    return false;
-  }
 
-  const MediaContentDescription* media =
-      static_cast<const MediaContentDescription*>(content->description);
-  return media->type() == media_type;
+bool IsMediaContent(const ContentInfo* content) {
+  return (content && content->type == NS_JINGLE_RTP);
 }
 
 bool IsAudioContent(const ContentInfo* content) {
-  return IsMediaContent(content, MEDIA_TYPE_AUDIO);
+  return IsMediaContentOfType(content, MEDIA_TYPE_AUDIO);
 }
 
 bool IsVideoContent(const ContentInfo* content) {
-  return IsMediaContent(content, MEDIA_TYPE_VIDEO);
+  return IsMediaContentOfType(content, MEDIA_TYPE_VIDEO);
 }
 
 bool IsDataContent(const ContentInfo* content) {
-  return IsMediaContent(content, MEDIA_TYPE_DATA);
+  return IsMediaContentOfType(content, MEDIA_TYPE_DATA);
 }
 
 static const ContentInfo* GetFirstMediaContent(const ContentInfos& contents,
                                                MediaType media_type) {
   for (ContentInfos::const_iterator content = contents.begin();
        content != contents.end(); content++) {
-    if (IsMediaContent(&*content, media_type)) {
+    if (IsMediaContentOfType(&*content, media_type)) {
       return &*content;
     }
   }
