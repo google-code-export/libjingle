@@ -488,6 +488,9 @@ bool WebRtcSession::SetLocalDescription(Action action,
     set_initiator(true);
   }
 
+  // Update the MediaContentDescription crypto settings as per the policy set.
+  UpdateSessionDescriptionSecurePolicy(desc->description());
+
   set_local_description(desc->description()->Copy());
   local_desc_.reset(desc);
 
@@ -580,14 +583,14 @@ bool WebRtcSession::UpdateSessionState(
     if (PushdownTransportDescription(source, cricket::CA_OFFER)) {
       SetState(source == cricket::CS_LOCAL ?
         STATE_SENTINITIATE : STATE_RECEIVEDINITIATE);
-      ret = true;
+      ret = (error() == cricket::BaseSession::ERROR_NONE);
     }
   } else if (action == kPrAnswer) {
     if (PushdownTransportDescription(source, cricket::CA_PRANSWER)) {
       EnableChannels();
       SetState(source == cricket::CS_LOCAL ?
           STATE_SENTPRACCEPT : STATE_RECEIVEDPRACCEPT);
-      ret = true;
+      ret = (error() == cricket::BaseSession::ERROR_NONE);
     }
   } else if (action == kAnswer) {
     // Remove channel and transport proxies, if MediaContentDescription is
@@ -600,7 +603,7 @@ bool WebRtcSession::UpdateSessionState(
       EnableChannels();
       SetState(source == cricket::CS_LOCAL ?
           STATE_SENTACCEPT : STATE_RECEIVEDACCEPT);
-      ret = true;
+      ret = (error() == cricket::BaseSession::ERROR_NONE);
     }
   }
   return ret;
@@ -1049,8 +1052,13 @@ void WebRtcSession::HandleBackwardCompatibility(
 
   // If the remote description has the init session version smaller than
   // kInitSessionVersion, we consider it's a older client.
-  const uint64 remote_session_version =
-      talk_base::FromString<uint64>(remote_desc->session_version());
+  uint64 remote_session_version;
+  if (!talk_base::FromString<uint64>(
+      remote_desc->session_version(), &remote_session_version)) {
+    LOG(LS_WARNING) << "Failed to get session version value from remote sdp.";
+    return;
+  }
+
   if (remote_session_version < kInitSessionVersion) {
     older_version_remote_peer_ = true;
   }
@@ -1074,6 +1082,27 @@ void WebRtcSession::HandleBackwardCompatibility(
     desc->RemoveTransportInfoByName(contents[i].name);
     new_transport_info.description.transport_type = cricket::NS_GINGLE_P2P;
     desc->AddTransportInfo(new_transport_info);
+  }
+}
+
+void WebRtcSession::UpdateSessionDescriptionSecurePolicy(
+    SessionDescription* sdesc) {
+  if (!sdesc) {
+    return;
+  }
+
+  // Updating the |crypto_required_| in MediaContentDescription to the
+  // appropriate state based on the current security policy.
+  for (cricket::ContentInfos::const_iterator iter = sdesc->contents().begin();
+       iter != sdesc->contents().end(); ++iter) {
+    if (cricket::IsMediaContent(&*iter)) {
+      MediaContentDescription* mdesc =
+          static_cast<MediaContentDescription*> (iter->description);
+      if (mdesc) {
+        mdesc->set_crypto_required(
+            session_desc_factory_.secure() == cricket::SEC_REQUIRED);
+      }
+    }
   }
 }
 

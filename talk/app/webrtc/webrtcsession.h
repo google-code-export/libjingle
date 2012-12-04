@@ -204,6 +204,12 @@ class WebRtcSession : public cricket::BaseSession,
   // handle the backward compatibility if needed.
   void HandleBackwardCompatibility(SessionDescriptionInterface* remote_desc);
 
+  // Forces |desc->crypto_required| to the appropriate state based on the
+  // current security policy, to ensure a failure occurs if there is an error
+  // in crypto negotiation.
+  // Called when processing the local session description.
+  void UpdateSessionDescriptionSecurePolicy(cricket::SessionDescription* desc);
+
   talk_base::scoped_ptr<cricket::VoiceChannel> voice_channel_;
   talk_base::scoped_ptr<cricket::VideoChannel> video_channel_;
   cricket::ChannelManager* channel_manager_;
