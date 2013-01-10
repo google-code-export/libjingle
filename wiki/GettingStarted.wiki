@@ -1,0 +1,77 @@
+= Getting Started =
+
+How to get and build the libjingle code.
+
+== Pre-requisite = 
+
+You'll need to have depot tools installed:
+
+https://sites.google.com/a/chromium.org/dev/developers/how-tos/depottools
+
+== Getting the Code =
+
+Create a working directory, enter it, and run:
+
+{{{
+gclient config http://libjingle.googlecode.com/svn/trunk/
+gclient sync
+}}}
+
+The sync will generate native build files for your environment using gyp (Windows: Visual Studio, OSX: XCode, Linux: make). This generation can also be forced manually:
+
+{{{
+gclient runhooks
+}}}
+
+== Getting Clang for Linux =
+
+Linux doesn't use clang by default, you have to download it manually the first time:
+{{{
+/tools/clang/scripts/update.sh
+}}}
+
+== Building the Library = 
+
+From the IDE, just open the project file and compile. From command line, see below:
+=== Windows =
+{{{
+devenv -build "Debug" libjingle.sln
+devenv -build "Release" libjingle.sln
+}}}
+
+=== OSX =
+{{{
+xcodebuild -project libjingle.xcodeproj -configuration Debug
+xcodebuild -project libjingle.xcodeproj -configuration Release
+}}}
+=== Linux =
+{{{
+make -j6 BUILDTYPE=Debug
+make -j6 BUILDTYPE=Release
+}}}
+
+== Memory tools =
+
+Memory errors and race conditions can be found by running tests under special memory tools. [http://valgrind.org/ Valgrind] is an instrumentation framework for building dynamic analysis tools. Various tests and profilers are built upon it to find memory handling errors and memory leaks, for instance. 
+
+=== Running Valgrind memcheck =
+
+Note: Valgrind is currently only supported on Linux and Mac OS X <=10.6. Windows profiling is not yet in place. 
+  # Get Valgrind binaries by following instructions at http://www.chromium.org/developers/how-tos/using-valgrind/building-valgrind under the heading "Using Pre-built Binaries from Chromium SVN". Notice: In the .gclient file, you need to add *third_party/valgrind* instead of *src/third_party/valgrind* since libjingle's directory structure is different from Chromium.
+  # Run `gclient sync`
+  # Generate Makefiles with the proper configuration by setting GYP_DEFINES before gclient runhooks as described at http://www.chromium.org/developers/how-tos/using-valgrind . This step is optional but Valgrind will allegedly work better with it.
+  # Clean (this is important) your output dir.
+  # Compile in Release mode (not necessary, but recommended)
+  # Run the test with (standing in trunk/): `tools/valgrind-libjingle/libjingle_tests.sh -t out/Release/libjingle_unittest`
+
+=== Running Thread Sanitizer (tsan) =
+
+  # Follow steps 1-5 above, but for the GYP_DEFINES, use *build_for_tool=tsan* instead.
+  # Run the test with (standing in trunk/): `tools/valgrind-libjingle/libjingle_tests.sh --tool=tsan -t out/Release/libjingle_unittest`
+  # For more info, see http://www.chromium.org/developers/how-tos/using-valgrind/threadsanitizer
+
+=== Running Address Sanitizer (asan) =
+
+  # Follow steps 1-5 above, but for the GYP_DEFINES, use *build_for_tool=asan* instead.
+  # Run the test with (standing in trunk/): `tools/valgrind-libjingle/libjingle_tests.sh --tool=asan -t out/Release/libjingle_unittest`
+  # For more information, see http://dev.chromium.org/developers/testing/addresssanitizer. 
